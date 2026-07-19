@@ -467,6 +467,52 @@ BOOST_AUTO_TEST_CASE(test_table_annotations_all_has_no_urban_share)
     BOOST_CHECK(json_result.values.find("urban_shares") == json_result.values.end());
 }
 
+BOOST_AUTO_TEST_CASE(test_table_urban_share_asymmetric)
+{
+    using namespace osrm;
+
+    auto osrm = getOSRM(OSRM_TEST_DATA_DIR "/ch/monaco.osrm");
+
+    // reference: the full 3x3 matrix over the big-component locations
+    TableParameters full_params;
+    for (const auto &location : get_locations_in_big_component())
+    {
+        full_params.coordinates.push_back(location);
+    }
+    full_params.annotations = TableParameters::AnnotationsType::UrbanShare;
+
+    json::Object full_result;
+    BOOST_REQUIRE(osrm.Table(full_params, full_result) == Status::Ok);
+    const auto &full_rows = std::get<json::Array>(full_result.values.at("urban_shares")).values;
+
+    // sources != destinations: the matrix must be n_sources x n_destinations and
+    // indexed [source_row][destination_column] like durations — a transposed or
+    // mis-shaped implementation fails here
+    TableParameters params;
+    params.coordinates = full_params.coordinates;
+    params.sources = {2};
+    params.destinations = {0, 2};
+    params.annotations = TableParameters::AnnotationsType::UrbanShare;
+
+    json::Object json_result;
+    BOOST_REQUIRE(osrm.Table(params, json_result) == Status::Ok);
+
+    const auto &rows = std::get<json::Array>(json_result.values.at("urban_shares")).values;
+    BOOST_REQUIRE_EQUAL(rows.size(), 1);
+    const auto &cells = std::get<json::Array>(rows[0]).values;
+    BOOST_REQUIRE_EQUAL(cells.size(), 2);
+
+    // cell (source 2 -> destination 0) must equal full[2][0]
+    const auto &full_cells = std::get<json::Array>(full_rows[2]).values;
+    BOOST_REQUIRE(std::holds_alternative<json::Number>(cells[0]));
+    BOOST_REQUIRE(std::holds_alternative<json::Number>(full_cells[0]));
+    BOOST_CHECK_EQUAL(std::get<json::Number>(cells[0]).value,
+                      std::get<json::Number>(full_cells[0]).value);
+
+    // source 2 -> destination 2 is a diagonal cell: null
+    BOOST_CHECK(std::holds_alternative<json::Null>(cells[1]));
+}
+
 BOOST_AUTO_TEST_CASE(test_table_urban_share_not_implemented_on_mld)
 {
     using namespace osrm;
