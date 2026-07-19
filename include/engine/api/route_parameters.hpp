@@ -73,7 +73,10 @@ struct RouteParameters : public BaseParameters
         Weight = 0x08,
         Datasources = 0x10,
         Speed = 0x20,
-        All = Duration | Nodes | Distance | Weight | Datasources | Speed
+        // All deliberately excludes UrbanShare: responses of existing clients
+        // requesting annotations=all (or the legacy annotations=true) must not change
+        All = Duration | Nodes | Distance | Weight | Datasources | Speed,
+        UrbanShare = 0x40
     };
 
     RouteParameters() = default;

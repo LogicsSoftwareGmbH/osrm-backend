@@ -38,6 +38,7 @@ static const std::unordered_map<std::string, RouteParameters::AnnotationsType>
                           {"weight", RouteParameters::AnnotationsType::Weight},
                           {"datasources", RouteParameters::AnnotationsType::Datasources},
                           {"speed", RouteParameters::AnnotationsType::Speed},
+                          {"urban_share", RouteParameters::AnnotationsType::UrbanShare},
                           {"all", RouteParameters::AnnotationsType::All}};
 
 #endif // OSRM_NB_ROUTEPARAMETER_H

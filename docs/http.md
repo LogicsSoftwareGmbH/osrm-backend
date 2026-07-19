@@ -209,13 +209,22 @@ In addition to the [general options](#general-options) the following options are
 |------------|---------------------------------------------|-------------------------------------------------------------------------------|
 |alternatives|`true`, `false` (default), or Number         |Search for alternative routes. Passing a number `alternatives=n` searches for up to `n` alternative routes.\*                            |
 |steps       |`true`, `false` (default)                    |Returned route steps for each route leg                                        |
-|annotations |`true`, `false` (default), `nodes`, `distance`, `duration`, `datasources`, `weight`, `speed`  |Returns additional metadata for each coordinate along the route geometry.      |
+|annotations |`true`, `false` (default), `nodes`, `distance`, `duration`, `datasources`, `weight`, `speed`, `urban_share`  |Returns additional metadata for each coordinate along the route geometry. `true` does not include `urban_share`.      |
 |geometries  |`polyline` (default), `polyline6`, `geojson` |Returned route geometry format (influences overview and per step)              |
 |overview    |`simplified` (default), `full`, `false`, `by_legs`      |Add overview geometry either full, simplified according to highest zoom level it could be displayed on, not at all, or split by leg.|
 |continue\_straight |`default` (default), `true`, `false`  |Forces the route to keep going straight at waypoints constraining uturns there even if it would be faster. Default value depends on the profile. |
 |waypoints   | `{index};{index};{index}...`                |Treats input coordinates indicated by given indices as waypoints in returned Match object. Default is to treat all input coordinates as waypoints.    |
 
 \* Please note that even if alternative routes are requested, a result cannot be guaranteed.
+
+`annotations=urban_share` requires a dataset preprocessed with a profile that declares
+`urban_share_weights` (see [profiles documentation](profiles.md)); otherwise the request fails
+with `NoUrbanData`. Unlike the table service's `urban_share` annotation it works with both the
+`ch` and `mld` algorithms. It adds a per-segment `urban_share` array to the leg
+[`Annotation` object](#annotation-object) and an `urban_share` summary value to each
+[`RouteLeg` object](#routeleg-object); the leg value matches the corresponding
+`urban_shares[i][j]` cell of a table request over the same coordinates (up to `±0.001`
+rounding).
 
 **Response**
 
@@ -228,6 +237,7 @@ In case of error the following `code`s are supported in addition to the general 
 | Type              | Description     |
 |-------------------|-----------------|
 | `NoRoute`         | No route found. |
+| `NoUrbanData`     | `urban_share` was requested but the dataset was preprocessed without `urban_share_weights`. |
 
 All other properties might be undefined.
 
@@ -442,7 +452,7 @@ In addition to the [general options](#general-options) the following options are
 |------------|------------------------------------------------|------------------------------------------------------------------------------------------|
 |steps       |`true`, `false` (default)                       |Returned route steps for each route                                                       |
 |geometries  |`polyline` (default), `polyline6`, `geojson`    |Returned route geometry format (influences overview and per step)                         |
-|annotations |`true`, `false` (default), `nodes`, `distance`, `duration`, `datasources`, `weight`, `speed`  |Returns additional metadata for each coordinate along the route geometry.                 |
+|annotations |`true`, `false` (default), `nodes`, `distance`, `duration`, `datasources`, `weight`, `speed`, `urban_share`  |Returns additional metadata for each coordinate along the route geometry. `true` does not include `urban_share`; see the [route service](#route-service) for its prerequisites.                 |
 |overview    |`simplified` (default), `full`, `false`, `by_legs`         |Add overview geometry either full, simplified according to highest zoom level it could be displayed on, not at all, or split by leg.|
 |timestamps  |`{timestamp};{timestamp}[;{timestamp} ...]`     |Timestamps for the input locations in seconds since UNIX epoch. Timestamps need to be monotonically increasing. |
 |radiuses    |`{radius};{radius}[;{radius} ...]`              |Standard deviation of GPS precision used for map matching. If applicable use GPS accuracy.|
@@ -498,7 +508,7 @@ In addition to the [general options](#general-options) the following options are
 |source      |`any` (default), `first`                        |Returned route starts at `any` or `first` coordinate                       |
 |destination |`any` (default), `last`                         |Returned route ends at `any` or `last` coordinate                          |
 |steps       |`true`, `false` (default)                       |Returned route instructions for each trip                                  |
-|annotations |`true`, `false` (default), `nodes`, `distance`, `duration`, `datasources`, `weight`, `speed` |Returns additional metadata for each coordinate along the route geometry.  |
+|annotations |`true`, `false` (default), `nodes`, `distance`, `duration`, `datasources`, `weight`, `speed`, `urban_share` |Returns additional metadata for each coordinate along the route geometry. `true` does not include `urban_share`; see the [route service](#route-service) for its prerequisites.  |
 |geometries  |`polyline` (default), `polyline6`, `geojson`    |Returned route geometry format (influences overview and per step)          |
 |overview    |`simplified` (default), `full`, `false`, `by_legs`         |Add overview geometry either full, simplified according to highest zoom level it could be displayed on, not at all, or split by leg.|
 
@@ -674,6 +684,11 @@ Represents a route between two waypoints.
 | true         | array of `RouteStep` objects describing the turn-by-turn instructions |
 | false        | empty array                                                           |
 
+- `urban_share`: Only present when `urban_share` is part of `annotations`: the share of the leg
+  that runs through built-up area, as a value in `[0, 1]` rounded to 3 decimals (weighted by the
+  profile's `urban_share_weights`, e.g. suburban roads count at a reduced weight). Absent for
+  zero-length legs. Matches the corresponding `urban_shares` cell of a table request over the
+  same coordinates. Flatbuffers responses use `-1` instead of omitting the field.
 - `annotation`: Additional details about each coordinate along with the route geometry:
 
 | annotations  |                                                                               |
@@ -714,6 +729,7 @@ Annotation of the whole route leg with fine-grained information about each segme
 - `nodes`: Array of OpenStreetMap node ids for each coordinate along the route (excluding the first/last user-supplied coordinates). Each id is a 64-bit unsigned integer (encoded as a JSON number for the `json` format, and as `ulong` for the `flatbuffers` format). Clients consuming flatbuffers should treat these values as 64-bit integers (JS bindings expose them as BigInt).
 - `weight`: The weights between each pair of coordinates.  Does not include any turn costs.
 - `speed`: Convenience field, calculation of `distance / duration` rounded to one decimal place
+- `urban_share`: The urban class ratio of the road each pair of coordinates lies on, in `[0, 1]` (the profile's `urban_share_weights` value of the most urban class set on the road, e.g. `1` for urban, `0.5` for suburban, `0` for rural). Only present when `urban_share` is part of `annotations`.
 - `metadata`: Metadata related to other annotations
   - `datasource_names`: The names of the data sources used for the speed between each pair of coordinates.  `lua profile` is the default profile, other values are the filenames supplied via `--segment-speed-file` to `osrm-contract` or `osrm-customize`
 
@@ -1019,6 +1035,7 @@ Almost the same as `json` Leg object. The following properties differ:
 
 - `annotations`: `Annotation` Same as `json` annotation field, but different format.
 - `steps`: `[Step]` Same as `step` annotation field, but different format.
+- `urban_share`: `double` Same as `json` urban_share field, but `-1` instead of absent when not available.
 
 ### Step object
 

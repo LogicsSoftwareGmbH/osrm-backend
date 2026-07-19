@@ -192,6 +192,16 @@ Status TripPlugin::HandleRequest(const RoutingAlgorithmsInterface &algorithms,
         return Status::Error;
 
     const auto &facade = algorithms.GetFacade();
+
+    if ((parameters.annotations_type & api::RouteParameters::AnnotationsType::UrbanShare) &&
+        !facade.HasUrbanRatios())
+    {
+        return Error("NoUrbanData",
+                     "Urban share data is not available for this dataset. Preprocess with a "
+                     "profile that declares urban_share_weights to enable it.",
+                     result);
+    }
+
     auto phantom_node_pairs = GetPhantomNodes(facade, parameters);
     if (phantom_node_pairs.size() != number_of_locations)
     {

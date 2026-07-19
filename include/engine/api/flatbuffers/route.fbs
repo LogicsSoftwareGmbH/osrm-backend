@@ -13,6 +13,7 @@ table Annotation {
     weight: [uint];
     speed: [float];
     metadata: Metadata;
+    urban_share: [float]; // per-segment urban class ratio in [0, 1]
 }
 
 enum ManeuverType: byte {
@@ -98,6 +99,7 @@ table Leg {
     steps: [Step];
     polyline: string;
     coordinates: [Position];
+    urban_share: double = -1; // urban-weighted share of the leg in [0, 1]; -1 = not available
 }
 
 table RouteObject {

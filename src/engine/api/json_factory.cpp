@@ -270,6 +270,10 @@ util::json::Object makeRouteLeg(guidance::RouteLeg leg,
     route_leg.values.emplace("weight", leg.weight);
     route_leg.values.emplace("summary", std::move(leg.summary));
     route_leg.values.emplace("steps", std::move(steps));
+    if (leg.urban_share)
+    {
+        route_leg.values.emplace("urban_share", *leg.urban_share);
+    }
     if (leg_geometry)
     {
         route_leg.values.emplace("geometry", std::move(*leg_geometry));

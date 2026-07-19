@@ -116,6 +116,15 @@ Status MatchPlugin::HandleRequest(const RoutingAlgorithmsInterface &algorithms,
 
     const auto &facade = algorithms.GetFacade();
 
+    if ((parameters.annotations_type & api::RouteParameters::AnnotationsType::UrbanShare) &&
+        !facade.HasUrbanRatios())
+    {
+        return Error("NoUrbanData",
+                     "Urban share data is not available for this dataset. Preprocess with a "
+                     "profile that declares urban_share_weights to enable it.",
+                     result);
+    }
+
     BOOST_ASSERT(parameters.IsValid());
 
     // enforce maximum number of locations for performance reasons
