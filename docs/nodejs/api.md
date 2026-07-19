@@ -150,7 +150,7 @@ Optionally returns distance table.
     *   `options.fallback_coordinate` **[String][3]?** Either `input` (default) or `snapped`.  If using a `fallback_speed`, use either the user-supplied coordinate (`input`), or the snapped coordinate (`snapped`) for calculating the as-the-crow-flies distance between two points.
     *   `options.scale_factor` **[Number][6]?** Multiply the table duration values in the table by this number for more controlled input into a route optimization solver.
     *   `options.snapping` **[String][3]?** Which edges can be snapped to, either `default`, or `any`.  `default` only snaps to edges marked by the profile as `is_startpoint`, `any` will allow snapping to any edge in the routing graph.
-    *   `options.annotations` **[Array][5]?** Return the requested table or tables in response. Can be `['duration']` (return the duration matrix, default), `[distance']` (return the distance matrix), or `['duration', distance']` (return both the duration matrix and the distance matrix).
+    *   `options.annotations` **[Array][5]?** Return the requested table or tables in response. Any combination of `duration` (return the duration matrix, default), `distance` (return the distance matrix) and `urban_share` (return the urban share matrix; requires contraction hierarchies and a dataset preprocessed with a profile that declares `urban_share_weights`).
 *   `callback` **[Function][8]**&#x20;
 
 #### Examples
@@ -177,6 +177,7 @@ Returns **[Object][2]** containing `durations`, `distances`, `sources`, and `des
 Values are given in seconds.
 **`distances`**: array of arrays that stores the matrix in row-major order. `distances[i][j]` gives the travel time from the i-th waypoint to the j-th waypoint.
 Values are given in meters.
+**`urban_shares`**: array of arrays that stores the matrix in row-major order. `urban_shares[i][j]` gives the share of the fastest path from the i-th waypoint to the j-th waypoint that runs through built-up area, in `[0, 1]`. `null` for unreachable pairs, `fallback_speed` estimates and degenerate pairs (e.g. the diagonal).
 **`sources`**: array of [`Ẁaypoint`][9] objects describing all sources in order.
 **`destinations`**: array of [`Ẁaypoint`][9] objects describing all destinations in order.
 **`fallback_speed_cells`**: (optional) if `fallback_speed` is used, will be an array of arrays of `row,column` values, indicating which cells contain estimated values.

@@ -21,6 +21,7 @@ void init_TableParameters(nb::module_ &m)
                               {std::string(), TableParameters::AnnotationsType::None},
                               {"duration", TableParameters::AnnotationsType::Duration},
                               {"distance", TableParameters::AnnotationsType::Distance},
+                              {"urban_share", TableParameters::AnnotationsType::UrbanShare},
                               {"all", TableParameters::AnnotationsType::All}};
 
     nb::class_<TableParameters, BaseParameters>(m, "TableParameters")

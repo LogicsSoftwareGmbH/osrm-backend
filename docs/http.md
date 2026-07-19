@@ -243,7 +243,7 @@ curl 'http://router.project-osrm.org/route/v1/driving/13.388860,52.517037;13.397
 Computes the duration of the fastest route between all pairs of supplied coordinates. Returns durations or distances or both between the coordinate pairs. Note that the distances are not the shortest distance between two coordinates, but rather the distances of the fastest routes. Durations are in seconds and distances are in meters.
 
 ```endpoint
-GET /table/v1/{profile}/{coordinates}?{sources}=[{elem}...];&{destinations}=[{elem}...]&annotations={duration|distance|duration,distance}
+GET /table/v1/{profile}/{coordinates}?{sources}=[{elem}...];&{destinations}=[{elem}...]&annotations={duration|distance|urban_share|...}
 ```
 
 **Options**
@@ -254,10 +254,15 @@ In addition to the [general options](#general-options) the following options are
 |------------|--------------------------------------------------|---------------------------------------------|
 |sources     |`{index};{index}[;{index} ...]` or `all` (default)|Use location with given index as source.     |
 |destinations|`{index};{index}[;{index} ...]` or `all` (default)|Use location with given index as destination.|
-|annotations |`duration` (default), `distance`, or `duration,distance`|Return the requested table or tables in response. |
+|annotations |Any comma-separated combination of `duration` (default), `distance` and `urban_share`|Return the requested table or tables in response. |
 |fallback_speed|`double > 0`| If no route found between a source/destination pair, calculate the as-the-crow-flies distance, then use this speed to estimate duration.|
 |fallback_coordinate|`input` (default), or `snapped`| When using a `fallback_speed`, use the user-supplied coordinate (`input`), or the snapped location (`snapped`) for calculating distances.|
 |scale_factor|`double > 0`| Use in conjunction with `annotations=durations`. Scales the table `duration` values by this number.|
+
+`annotations=urban_share` requires contraction hierarchies (`osrm-routed --algorithm ch`, the
+default) and a dataset preprocessed with a profile that declares `urban_share_weights` (see
+[profiles documentation](profiles.md)); otherwise the request fails with `NotImplemented`
+respectively `NoUrbanData`.
 
 Unlike other array encoded options, the length of `sources` and `destinations` can be **smaller or equal**
 to number of input locations;
@@ -303,6 +308,11 @@ curl 'http://router.project-osrm.org/table/v1/driving/13.388860,52.517037;13.397
   the i-th source to the j-th destination. Values are given in seconds. Can be `null` if no route between `i` and `j` can be found.
 - `distances` array of arrays that stores the matrix in row-major order. `distances[i][j]` gives the travel distance from
   the i-th source to the j-th destination. Values are given in meters. Can be `null` if no route between `i` and `j` can be found.
+- `urban_shares` array of arrays that stores the matrix in row-major order. `urban_shares[i][j]` gives the share of the fastest
+  path from the i-th source to the j-th destination that runs through built-up area, as a value in `[0, 1]` (weighted by the
+  profile's `urban_share_weights`, e.g. suburban roads count at a reduced weight). `null` if no route between `i` and `j` can
+  be found, if the cell was estimated via `fallback_speed`, or if the path has no length (e.g. the diagonal). Only present
+  when `urban_share` is part of `annotations`. Flatbuffers responses encode these `null`s as `-1`.
 - `sources` array of `Waypoint` objects describing all sources in order
 - `destinations` array of `Waypoint` objects describing all destinations in order
 - `fallback_speed_cells` (optional) array of arrays containing `i,j` pairs indicating which cells contain estimated values based on `fallback_speed`.  Will be absent if `fallback_speed` is not used.
@@ -313,6 +323,7 @@ In case of error the following `code`s are supported in addition to the general 
 |------------------|-----------------|
 | `NoTable`        | No route found. |
 | `NotImplemented`  | This request is not supported |
+| `NoUrbanData`    | `urban_share` was requested but the dataset was preprocessed without `urban_share_weights`. |
 
 All other properties might be undefined.
 

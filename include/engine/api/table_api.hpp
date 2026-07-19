@@ -44,7 +44,11 @@ class TableAPI final : public BaseAPI
     {
     }
 
+    // urban_meters is either empty (urban_share not requested) or positionally parallel to
+    // tables.second, which then is guaranteed non-empty (the plugin forces distance
+    // calculation as the share's denominator).
     void MakeResponse(const std::pair<std::vector<EdgeDuration>, std::vector<EdgeDistance>> &tables,
+                      const std::vector<EdgeDistance> &urban_meters,
                       const std::vector<PhantomNodeCandidates> &candidates,
                       const std::vector<TableCellRef> &fallback_speed_cells,
                       osrm::engine::api::ResultT &response) const
@@ -52,16 +56,17 @@ class TableAPI final : public BaseAPI
         if (std::holds_alternative<flatbuffers::FlatBufferBuilder>(response))
         {
             auto &fb_result = std::get<flatbuffers::FlatBufferBuilder>(response);
-            MakeResponse(tables, candidates, fallback_speed_cells, fb_result);
+            MakeResponse(tables, urban_meters, candidates, fallback_speed_cells, fb_result);
         }
         else
         {
             auto &json_result = std::get<util::json::Object>(response);
-            MakeResponse(tables, candidates, fallback_speed_cells, json_result);
+            MakeResponse(tables, urban_meters, candidates, fallback_speed_cells, json_result);
         }
     }
 
     void MakeResponse(const std::pair<std::vector<EdgeDuration>, std::vector<EdgeDistance>> &tables,
+                      const std::vector<EdgeDistance> &urban_meters,
                       const std::vector<PhantomNodeCandidates> &candidates,
                       const std::vector<TableCellRef> &fallback_speed_cells,
                       flatbuffers::FlatBufferBuilder &fb_result) const
@@ -126,6 +131,14 @@ class TableAPI final : public BaseAPI
             distances = MakeDistanceTable(fb_result, tables.second);
         }
 
+        bool use_urban_shares =
+            parameters.annotations & TableParameters::AnnotationsType::UrbanShare;
+        flatbuffers::Offset<flatbuffers::Vector<float>> urban_shares;
+        if (use_urban_shares)
+        {
+            urban_shares = MakeUrbanShareTable(fb_result, urban_meters, tables.second);
+        }
+
         bool have_speed_cells =
             parameters.fallback_speed != from_alias<double>(INVALID_FALLBACK_SPEED) &&
             parameters.fallback_speed > 0;
@@ -147,6 +160,10 @@ class TableAPI final : public BaseAPI
         {
             table.add_distances(distances);
         }
+        if (use_urban_shares)
+        {
+            table.add_urban_shares(urban_shares);
+        }
         if (have_speed_cells)
         {
             table.add_fallback_speed_cells(speed_cells);
@@ -164,6 +181,7 @@ class TableAPI final : public BaseAPI
     }
 
     void MakeResponse(const std::pair<std::vector<EdgeDuration>, std::vector<EdgeDistance>> &tables,
+                      const std::vector<EdgeDistance> &urban_meters,
                       const std::vector<PhantomNodeCandidates> &candidates,
                       const std::vector<TableCellRef> &fallback_speed_cells,
                       util::json::Object &response) const
@@ -217,6 +235,15 @@ class TableAPI final : public BaseAPI
             response.values.emplace(
                 "distances",
                 MakeDistanceTable(tables.second, number_of_sources, number_of_destinations));
+        }
+
+        if (parameters.annotations & TableParameters::AnnotationsType::UrbanShare)
+        {
+            response.values.emplace("urban_shares",
+                                    MakeUrbanShareTable(urban_meters,
+                                                        tables.second,
+                                                        number_of_sources,
+                                                        number_of_destinations));
         }
 
         if (parameters.fallback_speed != from_alias<double>(INVALID_FALLBACK_SPEED) &&
@@ -306,6 +333,41 @@ class TableAPI final : public BaseAPI
                            return std::round(from_alias<double>(distance) * 10) / 10.;
                        });
         return builder.CreateVector(duration_table);
+    }
+
+    // A cell has no share when the pair is unreachable, estimated via fallback_speed
+    // (urban stays unset), or degenerate (distance <= 0, e.g. the diagonal). JSON uses
+    // null for such cells; flatbuffers uses -1 since 0 is a legitimate all-rural share.
+    static bool UrbanShareUnavailable(const EdgeDistance urban, const EdgeDistance distance)
+    {
+        return urban == MAXIMAL_EDGE_DISTANCE || distance == INVALID_EDGE_DISTANCE ||
+               from_alias<double>(distance) <= 0.;
+    }
+
+    static double UrbanShareValue(const EdgeDistance urban, const EdgeDistance distance)
+    {
+        const auto share =
+            std::clamp(from_alias<double>(urban) / from_alias<double>(distance), 0., 1.);
+        // round to three decimal places
+        return std::round(share * 1000.) / 1000.;
+    }
+
+    flatbuffers::Offset<flatbuffers::Vector<float>>
+    MakeUrbanShareTable(flatbuffers::FlatBufferBuilder &builder,
+                        const std::vector<EdgeDistance> &urban_values,
+                        const std::vector<EdgeDistance> &distance_values) const
+    {
+        BOOST_ASSERT(urban_values.size() == distance_values.size());
+        std::vector<float> share_table(urban_values.size());
+        for (const auto index : util::irange<std::size_t>(0UL, urban_values.size()))
+        {
+            share_table[index] =
+                UrbanShareUnavailable(urban_values[index], distance_values[index])
+                    ? -1.f
+                    : static_cast<float>(
+                          UrbanShareValue(urban_values[index], distance_values[index]));
+        }
+        return builder.CreateVector(share_table);
     }
 
     flatbuffers::Offset<flatbuffers::Vector<uint32_t>>
@@ -406,6 +468,35 @@ class TableAPI final : public BaseAPI
                                return util::json::Value(util::json::Number(
                                    std::round(from_alias<double>(distance) * 10) / 10.));
                            });
+            json_table.values.push_back(util::json::Value{json_row});
+        }
+        return json_table;
+    }
+
+    util::json::Array MakeUrbanShareTable(const std::vector<EdgeDistance> &urban_values,
+                                          const std::vector<EdgeDistance> &distance_values,
+                                          std::size_t number_of_rows,
+                                          std::size_t number_of_columns) const
+    {
+        BOOST_ASSERT(urban_values.size() == distance_values.size());
+        util::json::Array json_table;
+        for (const auto row : util::irange<std::size_t>(0UL, number_of_rows))
+        {
+            util::json::Array json_row;
+            json_row.values.reserve(number_of_columns);
+            for (const auto column : util::irange<std::size_t>(0UL, number_of_columns))
+            {
+                const auto index = row * number_of_columns + column;
+                if (UrbanShareUnavailable(urban_values[index], distance_values[index]))
+                {
+                    json_row.values.push_back(util::json::Null());
+                }
+                else
+                {
+                    json_row.values.push_back(util::json::Number(
+                        UrbanShareValue(urban_values[index], distance_values[index])));
+                }
+            }
             json_table.values.push_back(util::json::Value{json_row});
         }
         return json_table;

@@ -74,12 +74,39 @@ Status TablePlugin::HandleRequest(const RoutingAlgorithmsInterface &algorithms,
 
     bool request_distance = params.annotations & api::TableParameters::AnnotationsType::Distance;
     bool request_duration = params.annotations & api::TableParameters::AnnotationsType::Duration;
+    bool request_urban = params.annotations & api::TableParameters::AnnotationsType::UrbanShare;
 
-    auto result_tables_pair = algorithms.ManyToManySearch(
-        snapped_phantoms, params.sources, params.destinations, request_distance, nullptr);
+    if (request_urban && !algorithms.SupportsUrbanShareAnnotation())
+    {
+        return Error("NotImplemented",
+                     "The urban_share annotation is not implemented for the chosen search "
+                     "algorithm.",
+                     result);
+    }
+
+    // urban_share is urban_meters / distance, so the distance table is needed as the
+    // denominator even when the client did not ask for distances in the response.
+    const bool calculate_distance = request_distance || request_urban;
+
+    std::vector<EdgeDistance> urban_table;
+    auto result_tables_pair = algorithms.ManyToManySearch(snapped_phantoms,
+                                                          params.sources,
+                                                          params.destinations,
+                                                          calculate_distance,
+                                                          request_urban ? &urban_table : nullptr);
+
+    // The search only fills the urban table when the dataset carries urban class data
+    // (preprocessed with a profile that sets urban_share_weights).
+    if (request_urban && urban_table.empty())
+    {
+        return Error("NoUrbanData",
+                     "Urban share data is not available for this dataset. Preprocess with a "
+                     "profile that declares urban_share_weights to enable it.",
+                     result);
+    }
 
     if ((request_duration && result_tables_pair.first.empty()) ||
-        (request_distance && result_tables_pair.second.empty()))
+        (calculate_distance && result_tables_pair.second.empty()))
     {
         return Error("NoTable", "No table found", result);
     }
@@ -150,7 +177,8 @@ Status TablePlugin::HandleRequest(const RoutingAlgorithmsInterface &algorithms,
     }
 
     api::TableAPI table_api{facade, params};
-    table_api.MakeResponse(result_tables_pair, snapped_phantoms, estimated_pairs, result);
+    table_api.MakeResponse(
+        result_tables_pair, urban_table, snapped_phantoms, estimated_pairs, result);
 
     return Status::Ok;
 }
