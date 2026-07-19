@@ -47,6 +47,7 @@
 #include <tbb/parallel_pipeline.h>
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <thread>
 #include <tuple>
@@ -163,7 +164,7 @@ UrbanClassWeights MakeUrbanClassWeights(
             throw util::exception("urban_share_weights uses unknown class name: " + name +
                                   ". Class names must be declared in the profile's classes list.");
         }
-        if (weight < 0.f || weight > 1.f)
+        if (!std::isfinite(weight) || weight < 0.f || weight > 1.f)
         {
             throw util::exception("urban_share_weights[" + name + "] must be within [0, 1].");
         }
@@ -650,6 +651,12 @@ Extractor::ParsedOSMData Extractor::ParseOSMData(ScriptingEnvironment &scripting
     {
         files::writeUrbanConfig(config.GetPath(".osrm.urban_config"),
                                 MakeUrbanClassWeights(urban_share_weights, classes_map));
+    }
+    else
+    {
+        // outputs are always regenerated: a stale config from an earlier run with
+        // urban_share_weights must not keep the urban pipeline alive downstream
+        std::filesystem::remove(config.GetPath(".osrm.urban_config"));
     }
 
     TIMER_STOP(extracting);
