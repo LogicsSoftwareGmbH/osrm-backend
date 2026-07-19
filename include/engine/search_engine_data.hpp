@@ -33,8 +33,13 @@ struct ManyToManyHeapData : HeapData
 {
     EdgeDuration duration;
     EdgeDistance distance;
+    EdgeDistance urban;
     ManyToManyHeapData(NodeID p, EdgeDuration duration, EdgeDistance distance)
-        : HeapData(p), duration(duration), distance(distance)
+        : HeapData(p), duration(duration), distance(distance), urban{0}
+    {
+    }
+    ManyToManyHeapData(NodeID p, EdgeDuration duration, EdgeDistance distance, EdgeDistance urban)
+        : HeapData(p), duration(duration), distance(distance), urban(urban)
     {
     }
 };

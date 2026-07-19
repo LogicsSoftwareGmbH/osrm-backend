@@ -471,8 +471,11 @@ double getNetworkDistance(SearchEngineData<Algorithm> &engine_working_data,
                           const PhantomNode &target_phantom,
                           EdgeWeight duration_upper_bound = INVALID_EDGE_WEIGHT);
 
+// the third tuple element is the loop edge's urban_meters (0 when the dataset
+// carries no urban side-car), taken from the same edge as the distance
 template <typename EdgeMetric>
-std::tuple<EdgeMetric, EdgeDistance> getLoopMetric(const DataFacade<Algorithm> &facade, NodeID node)
+std::tuple<EdgeMetric, EdgeDistance, EdgeDistance>
+getLoopMetric(const DataFacade<Algorithm> &facade, NodeID node)
 {
     EdgeMetric loop_metric;
     if constexpr (std::is_same<EdgeMetric, EdgeDuration>::value)
@@ -484,6 +487,8 @@ std::tuple<EdgeMetric, EdgeDistance> getLoopMetric(const DataFacade<Algorithm> &
         loop_metric = INVALID_EDGE_WEIGHT;
     }
     EdgeDistance loop_distance = MAXIMAL_EDGE_DISTANCE;
+    EdgeDistance loop_urban = {0};
+    const bool has_urban = facade.HasUrbanData();
     for (auto edge : facade.GetAdjacentEdgeRange(node))
     {
         const auto &data = facade.GetEdgeData(edge);
@@ -505,11 +510,12 @@ std::tuple<EdgeMetric, EdgeDistance> getLoopMetric(const DataFacade<Algorithm> &
                 {
                     loop_metric = value;
                     loop_distance = data.distance;
+                    loop_urban = has_urban ? facade.GetUrbanMeters(edge) : EdgeDistance{0};
                 }
             }
         }
     }
-    return std::make_tuple(loop_metric, loop_distance);
+    return std::make_tuple(loop_metric, loop_distance, loop_urban);
 }
 } // namespace osrm::engine::routing_algorithms::ch
 

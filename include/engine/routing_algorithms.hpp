@@ -35,7 +35,8 @@ class RoutingAlgorithmsInterface
     ManyToManySearch(const std::vector<PhantomNodeCandidates> &candidates_list,
                      const std::vector<std::size_t> &source_indices,
                      const std::vector<std::size_t> &target_indices,
-                     const bool calculate_distance) const = 0;
+                     const bool calculate_distance,
+                     std::vector<EdgeDistance> *urban_meters_table) const = 0;
 
     virtual routing_algorithms::SubMatchingList
     MapMatching(const routing_algorithms::CandidateLists &candidates_list,
@@ -56,6 +57,7 @@ class RoutingAlgorithmsInterface
     virtual bool HasMapMatching() const = 0;
     virtual bool HasManyToManySearch() const = 0;
     virtual bool SupportsDistanceAnnotationType() const = 0;
+    virtual bool SupportsUrbanShareAnnotation() const = 0;
     virtual bool HasGetTileTurns() const = 0;
     virtual bool HasExcludeFlags() const = 0;
     virtual bool IsValid() const = 0;
@@ -89,7 +91,8 @@ class RoutingAlgorithms final : public RoutingAlgorithmsInterface
     ManyToManySearch(const std::vector<PhantomNodeCandidates> &candidates_list,
                      const std::vector<std::size_t> &source_indices,
                      const std::vector<std::size_t> &target_indices,
-                     const bool calculate_distance) const final override;
+                     const bool calculate_distance,
+                     std::vector<EdgeDistance> *urban_meters_table) const final override;
 
     routing_algorithms::SubMatchingList
     MapMatching(const routing_algorithms::CandidateLists &candidates_list,
@@ -132,6 +135,11 @@ class RoutingAlgorithms final : public RoutingAlgorithmsInterface
     bool SupportsDistanceAnnotationType() const final override
     {
         return routing_algorithms::SupportsDistanceAnnotationType<Algorithm>::value;
+    }
+
+    bool SupportsUrbanShareAnnotation() const final override
+    {
+        return routing_algorithms::SupportsUrbanShareAnnotation<Algorithm>::value;
     }
 
     bool HasGetTileTurns() const final override
@@ -198,7 +206,8 @@ RoutingAlgorithms<Algorithm>::ManyToManySearch(
     const std::vector<PhantomNodeCandidates> &candidates_list,
     const std::vector<std::size_t> &_source_indices,
     const std::vector<std::size_t> &_target_indices,
-    const bool calculate_distance) const
+    const bool calculate_distance,
+    std::vector<EdgeDistance> *urban_meters_table) const
 {
     BOOST_ASSERT(!candidates_list.empty());
 
@@ -221,7 +230,8 @@ RoutingAlgorithms<Algorithm>::ManyToManySearch(
                                                 candidates_list,
                                                 std::move(source_indices),
                                                 std::move(target_indices),
-                                                calculate_distance);
+                                                calculate_distance,
+                                                urban_meters_table);
 }
 
 template <routing_algorithms::RoutingAlgorithm Algorithm>
