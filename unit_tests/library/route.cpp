@@ -1,6 +1,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include <cmath>
+#include <utility>
 
 #include "coordinates.hpp"
 #include "equal_json.hpp"
@@ -14,6 +15,7 @@
 #include "osrm/osrm.hpp"
 #include "osrm/route_parameters.hpp"
 #include "osrm/status.hpp"
+#include "osrm/table_parameters.hpp"
 
 osrm::Status run_route_json(const osrm::OSRM &osrm,
                             const osrm::RouteParameters &params,
@@ -601,6 +603,216 @@ BOOST_AUTO_TEST_CASE(test_manual_setting_of_annotations_property_old_api)
 BOOST_AUTO_TEST_CASE(test_manual_setting_of_annotations_property_new_api)
 {
     test_manual_setting_of_annotations_property(false);
+}
+
+void test_route_urban_share_annotation(bool use_json_only_api)
+{
+    auto osrm = getOSRM(OSRM_TEST_DATA_DIR "/ch/monaco.osrm");
+
+    using namespace osrm;
+
+    const auto locations = get_locations_in_big_component();
+
+    RouteParameters params;
+    params.annotations_type =
+        RouteParameters::AnnotationsType::Distance | RouteParameters::AnnotationsType::UrbanShare;
+    params.coordinates.push_back(locations.at(0));
+    params.coordinates.push_back(locations.at(1));
+
+    json::Object json_result;
+    const auto rc = run_route_json(osrm, params, json_result, use_json_only_api);
+    BOOST_REQUIRE(rc == Status::Ok);
+
+    const auto &routes = std::get<json::Array>(json_result.values["routes"]).values;
+    const auto &leg = std::get<json::Object>(
+        std::get<json::Array>(std::get<json::Object>(routes[0]).values.at("legs")).values[0]);
+    const auto &annotation = std::get<json::Object>(leg.values.at("annotation"));
+    const auto &shares = std::get<json::Array>(annotation.values.at("urban_share")).values;
+    const auto &distances = std::get<json::Array>(annotation.values.at("distance")).values;
+    BOOST_REQUIRE_EQUAL(shares.size(), distances.size());
+    BOOST_REQUIRE(!shares.empty());
+
+    // per-segment values are the profile's class weights: car declares
+    // urban = 1.0 and suburban = 0.5, everything else counts as 0
+    double total_distance = 0.;
+    double urban_distance = 0.;
+    for (std::size_t i = 0; i < shares.size(); ++i)
+    {
+        const auto share = std::get<json::Number>(shares[i]).value;
+        BOOST_CHECK(share == 0. || share == 0.5 || share == 1.);
+        const auto distance = std::get<json::Number>(distances[i]).value;
+        total_distance += distance;
+        urban_distance += share * distance;
+    }
+
+    // the leg summary is the distance-weighted mean of the segment values,
+    // rounded to 3 decimals — the same definition as a /table cell
+    BOOST_REQUIRE(total_distance > 0.);
+    const auto leg_share = std::get<json::Number>(leg.values.at("urban_share")).value;
+    const auto expected = std::round(urban_distance / total_distance * 1000.) / 1000.;
+    BOOST_CHECK_LE(std::abs(leg_share - expected), 1e-9);
+}
+BOOST_AUTO_TEST_CASE(test_route_urban_share_annotation_old_api)
+{
+    test_route_urban_share_annotation(true);
+}
+BOOST_AUTO_TEST_CASE(test_route_urban_share_annotation_new_api)
+{
+    test_route_urban_share_annotation(false);
+}
+
+BOOST_AUTO_TEST_CASE(test_route_urban_share_matches_table_cell)
+{
+    using namespace osrm;
+
+    auto osrm = getOSRM(OSRM_TEST_DATA_DIR "/ch/monaco.osrm");
+    const auto locations = get_locations_in_big_component();
+
+    TableParameters table_params;
+    table_params.coordinates.push_back(locations.at(0));
+    table_params.coordinates.push_back(locations.at(1));
+    table_params.annotations = TableParameters::AnnotationsType::UrbanShare;
+
+    json::Object table_result;
+    BOOST_REQUIRE(osrm.Table(table_params, table_result) == Status::Ok);
+    const auto &rows = std::get<json::Array>(table_result.values.at("urban_shares")).values;
+
+    const std::pair<std::size_t, std::size_t> directions[] = {{0, 1}, {1, 0}};
+    for (const auto &[source, destination] : directions)
+    {
+        RouteParameters params;
+        params.annotations_type = RouteParameters::AnnotationsType::UrbanShare;
+        params.coordinates.push_back(locations.at(source));
+        params.coordinates.push_back(locations.at(destination));
+
+        json::Object json_result;
+        BOOST_REQUIRE(run_route_json(osrm, params, json_result, true) == Status::Ok);
+        const auto &routes = std::get<json::Array>(json_result.values["routes"]).values;
+        const auto &leg = std::get<json::Object>(
+            std::get<json::Array>(std::get<json::Object>(routes[0]).values.at("legs")).values[0]);
+        const auto route_share = std::get<json::Number>(leg.values.at("urban_share")).value;
+
+        const auto cell =
+            std::get<json::Number>(std::get<json::Array>(rows[source]).values[destination]).value;
+
+        // both sides round to 3 decimals but sum floats in different order, so
+        // allow the last digit to wobble
+        BOOST_CHECK_LE(std::abs(route_share - cell), 0.001 + 1e-9);
+    }
+}
+
+void test_route_annotations_true_has_no_urban_share(bool use_json_only_api)
+{
+    auto osrm = getOSRM(OSRM_TEST_DATA_DIR "/ch/monaco.osrm");
+
+    using namespace osrm;
+
+    const auto locations = get_locations_in_big_component();
+
+    RouteParameters params;
+    params.annotations = true;
+    params.coordinates.push_back(locations.at(0));
+    params.coordinates.push_back(locations.at(1));
+
+    json::Object json_result;
+    const auto rc = run_route_json(osrm, params, json_result, use_json_only_api);
+    BOOST_REQUIRE(rc == Status::Ok);
+
+    // annotations=true predates urban_share and must keep producing the same
+    // response as before
+    const auto &routes = std::get<json::Array>(json_result.values["routes"]).values;
+    const auto &leg = std::get<json::Object>(
+        std::get<json::Array>(std::get<json::Object>(routes[0]).values.at("legs")).values[0]);
+    const auto &annotation = std::get<json::Object>(leg.values.at("annotation"));
+    BOOST_CHECK(annotation.values.find("urban_share") == annotation.values.end());
+    BOOST_CHECK(leg.values.find("urban_share") == leg.values.end());
+}
+BOOST_AUTO_TEST_CASE(test_route_annotations_true_has_no_urban_share_old_api)
+{
+    test_route_annotations_true_has_no_urban_share(true);
+}
+BOOST_AUTO_TEST_CASE(test_route_annotations_true_has_no_urban_share_new_api)
+{
+    test_route_annotations_true_has_no_urban_share(false);
+}
+
+BOOST_AUTO_TEST_CASE(test_route_urban_share_on_mld)
+{
+    using namespace osrm;
+
+    // unlike the table annotation the route side needs no CH accumulator — the
+    // class-ratio LUT comes from .osrm.urban_config, which MLD datasets carry too
+    auto osrm = getOSRM(OSRM_TEST_DATA_DIR "/mld/monaco.osrm", osrm::EngineConfig::Algorithm::MLD);
+    const auto locations = get_locations_in_big_component();
+
+    RouteParameters params;
+    params.annotations_type = RouteParameters::AnnotationsType::UrbanShare;
+    params.coordinates.push_back(locations.at(0));
+    params.coordinates.push_back(locations.at(1));
+
+    json::Object json_result;
+    const auto rc = run_route_json(osrm, params, json_result, true);
+    BOOST_REQUIRE(rc == Status::Ok);
+
+    const auto &routes = std::get<json::Array>(json_result.values["routes"]).values;
+    const auto &leg = std::get<json::Object>(
+        std::get<json::Array>(std::get<json::Object>(routes[0]).values.at("legs")).values[0]);
+    const auto &annotation = std::get<json::Object>(leg.values.at("annotation"));
+    const auto &shares = std::get<json::Array>(annotation.values.at("urban_share")).values;
+    BOOST_REQUIRE(!shares.empty());
+    for (const auto &share : shares)
+    {
+        const auto value = std::get<json::Number>(share).value;
+        BOOST_CHECK(value >= 0. && value <= 1.);
+    }
+    const auto leg_share = std::get<json::Number>(leg.values.at("urban_share")).value;
+    BOOST_CHECK(leg_share >= 0. && leg_share <= 1.);
+}
+
+BOOST_AUTO_TEST_CASE(test_route_urban_share_serialize_fb)
+{
+    using namespace osrm;
+
+    auto osrm = getOSRM(OSRM_TEST_DATA_DIR "/ch/monaco.osrm");
+    const auto locations = get_locations_in_big_component();
+
+    RouteParameters params;
+    params.annotations_type = RouteParameters::AnnotationsType::UrbanShare;
+    params.coordinates.push_back(locations.at(0));
+    params.coordinates.push_back(locations.at(1));
+
+    engine::api::ResultT result = flatbuffers::FlatBufferBuilder();
+    const auto rc = osrm.Route(params, result);
+    BOOST_REQUIRE(rc == Status::Ok);
+
+    auto &fb_result = std::get<flatbuffers::FlatBufferBuilder>(result);
+    auto fb = engine::api::fbresult::GetFBResult(fb_result.GetBufferPointer());
+    BOOST_CHECK(!fb->error());
+    BOOST_REQUIRE(fb->routes() != nullptr);
+    BOOST_REQUIRE_GT(fb->routes()->size(), 0);
+
+    const auto leg = fb->routes()->Get(0)->legs()->Get(0);
+    BOOST_CHECK(leg->urban_share() >= 0. && leg->urban_share() <= 1.);
+    BOOST_REQUIRE(leg->annotations() != nullptr);
+    const auto *shares = leg->annotations()->urban_share();
+    BOOST_REQUIRE(shares != nullptr);
+    BOOST_REQUIRE_GT(shares->size(), 0);
+    for (const auto share : *shares)
+    {
+        BOOST_CHECK(share >= 0.f && share <= 1.f);
+    }
+
+    // without the annotation the leg keeps the schema's -1 "not available" default
+    RouteParameters plain_params;
+    plain_params.coordinates.push_back(locations.at(0));
+    plain_params.coordinates.push_back(locations.at(1));
+    engine::api::ResultT plain_result = flatbuffers::FlatBufferBuilder();
+    BOOST_REQUIRE(osrm.Route(plain_params, plain_result) == Status::Ok);
+    auto &plain_fb_result = std::get<flatbuffers::FlatBufferBuilder>(plain_result);
+    auto plain_fb = engine::api::fbresult::GetFBResult(plain_fb_result.GetBufferPointer());
+    BOOST_REQUIRE(plain_fb->routes() != nullptr);
+    BOOST_REQUIRE_GT(plain_fb->routes()->size(), 0);
+    BOOST_CHECK_EQUAL(plain_fb->routes()->Get(0)->legs()->Get(0)->urban_share(), -1.);
 }
 
 BOOST_AUTO_TEST_CASE(test_route_serialize_fb)
