@@ -114,6 +114,13 @@ class BaseDataFacade
 
     virtual extractor::ClassData GetClassData(const NodeID edge_based_node_id) const = 0;
 
+    // urban class-weight LUT (.osrm.urban_config side-car); present only when the
+    // dataset was preprocessed with a profile declaring urban_share_weights
+    virtual bool HasUrbanRatios() const = 0;
+
+    // maximum urban class weight over the node's set class bits, in [0, 1]
+    virtual float GetUrbanRatio(const extractor::ClassData classes) const = 0;
+
     virtual bool ExcludeNode(const NodeID edge_based_node_id) const = 0;
 
     virtual std::vector<std::string> GetClasses(const extractor::ClassData class_data) const = 0;

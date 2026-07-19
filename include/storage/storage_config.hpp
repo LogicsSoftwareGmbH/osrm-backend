@@ -107,6 +107,7 @@ struct StorageConfig final : IOConfig
               GetRequiredFiles(disabled_feature_datasets_),
               {".osrm.hsgr",
                ".osrm.urban",
+               ".osrm.urban_config",
                ".osrm.cells",
                ".osrm.cell_metrics",
                ".osrm.mldgr",

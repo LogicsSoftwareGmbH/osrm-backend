@@ -3,7 +3,6 @@
 
 #include "contractor/query_edge.hpp"
 #include "customizer/edge_based_graph.hpp"
-#include "extractor/class_data.hpp"
 #include "extractor/edge_based_edge.hpp"
 #include "engine/algorithm.hpp"
 
@@ -44,13 +43,11 @@ template <> class AlgorithmDataFacade<CH>
     virtual EdgeRange GetAdjacentEdgeRange(const NodeID edge_based_node_id) const = 0;
 
     // urban_meters side-car (.osrm.urban); present only when the dataset was
-    // preprocessed with a profile declaring urban_share_weights
+    // preprocessed with a profile declaring urban_share_weights. The class-ratio
+    // LUT lives on BaseDataFacade (GetUrbanRatio) so non-CH services can use it.
     virtual bool HasUrbanData() const = 0;
 
     virtual EdgeDistance GetUrbanMeters(const EdgeID edge_based_edge_id) const = 0;
-
-    // maximum urban class weight over the node's set class bits, in [0, 1]
-    virtual float GetUrbanRatio(const extractor::ClassData classes) const = 0;
 
     // searches for a specific edge
     virtual EdgeID FindEdge(const NodeID edge_based_node_from,

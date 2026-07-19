@@ -24,6 +24,7 @@
 #include <chrono>
 #include <thread>
 
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -331,6 +332,7 @@ std::vector<std::pair<bool, std::filesystem::path>> Storage::GetUpdatableFiles()
         {IS_OPTIONAL, config.GetPath(".osrm.cell_metrics")},
         {IS_OPTIONAL, config.GetPath(".osrm.hsgr")},
         {IS_OPTIONAL, config.GetPath(".osrm.urban")},
+        {IS_OPTIONAL, config.GetPath(".osrm.urban_config")},
         {IS_REQUIRED, config.GetPath(".osrm.datasource_names")},
         {IS_REQUIRED, config.GetPath(".osrm.geometry")},
         {IS_REQUIRED, config.GetPath(".osrm.turn_weight_penalties")},
@@ -568,6 +570,19 @@ void Storage::PopulateUpdatableData(const SharedDataIndex &index)
                     " in " + config.GetPath(".osrm.edges").string());
             }
         }
+    }
+
+    // the class-weight LUT block is carried by both urban side-car files; reading the
+    // extract-side config makes it available on datasets that never ran osrm-contract
+    // (MLD), while .osrm.urban keeps supplying it on legacy directories
+    if (std::filesystem::exists(config.GetPath(".osrm.urban_config")))
+    {
+        extractor::UrbanClassWeights urban_config_weights;
+        extractor::files::readUrbanConfig(config.GetPath(".osrm.urban_config"),
+                                          urban_config_weights);
+        auto urban_class_weights = make_vector_view<float>(index, "/common/urban_class_weights");
+        std::copy(
+            urban_config_weights.begin(), urban_config_weights.end(), urban_class_weights.begin());
     }
 
     if (std::filesystem::exists(config.GetPath(".osrm.urban")))

@@ -65,7 +65,6 @@ class ContiguousInternalMemoryAlgorithmDataFacade<CH> : public datafacade::Algor
 
     QueryGraph m_query_graph;
     util::vector_view<EdgeDistance> m_urban_meters;
-    util::vector_view<float> m_urban_class_weights;
     bool m_has_urban_data = false;
 
     // allocator that keeps the allocation data
@@ -98,8 +97,6 @@ class ContiguousInternalMemoryAlgorithmDataFacade<CH> : public datafacade::Algor
         if (m_has_urban_data)
         {
             m_urban_meters = make_vector_view<EdgeDistance>(index, urban_block_name);
-            m_urban_class_weights =
-                make_vector_view<float>(index, "/common/urban_class_weights");
         }
     }
 
@@ -134,12 +131,6 @@ class ContiguousInternalMemoryAlgorithmDataFacade<CH> : public datafacade::Algor
     {
         BOOST_ASSERT(m_has_urban_data);
         return m_urban_meters[edge_based_edge_id];
-    }
-
-    float GetUrbanRatio(const extractor::ClassData classes) const override final
-    {
-        BOOST_ASSERT(m_has_urban_data);
-        return extractor::urbanClassRatio(classes, m_urban_class_weights);
     }
 
     // searches for a specific edge
@@ -219,6 +210,9 @@ class ContiguousInternalMemoryDataFacadeBase : public BaseDataFacade
     // available turns. Such a class id is stored with every edge.
     std::optional<util::vector_view<util::guidance::EntryClass>> m_entry_class_table;
 
+    util::vector_view<float> m_urban_class_weights;
+    bool m_has_urban_ratios = false;
+
     // allocator that keeps the allocation data
     std::shared_ptr<ContiguousBlockAllocator> allocator;
 
@@ -268,6 +262,14 @@ class ContiguousInternalMemoryDataFacadeBase : public BaseDataFacade
         if (isIndexed(index, "/common/turn_data"))
         {
             turn_data = make_turn_data_view(index, "/common/turn_data");
+        }
+
+        // optional urban class-weight LUT, loaded from .osrm.urban_config (or the
+        // copy inside .osrm.urban on directories predating that side-car)
+        m_has_urban_ratios = isIndexed(index, "/common/urban_class_weights");
+        if (m_has_urban_ratios)
+        {
+            m_urban_class_weights = make_vector_view<float>(index, "/common/urban_class_weights");
         }
 
         if (isIndexed(index, "/common/names"))
@@ -463,6 +465,14 @@ class ContiguousInternalMemoryDataFacadeBase : public BaseDataFacade
     extractor::ClassData GetClassData(const NodeID edge_based_node_id) const override final
     {
         return edge_based_node_data.GetClassData(edge_based_node_id);
+    }
+
+    bool HasUrbanRatios() const override final { return m_has_urban_ratios; }
+
+    float GetUrbanRatio(const extractor::ClassData classes) const override final
+    {
+        BOOST_ASSERT(m_has_urban_ratios);
+        return extractor::urbanClassRatio(classes, m_urban_class_weights);
     }
 
     bool ExcludeNode(const NodeID edge_based_node_id) const override final
