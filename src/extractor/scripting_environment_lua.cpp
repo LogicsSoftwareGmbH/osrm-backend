@@ -1193,6 +1193,40 @@ std::vector<std::vector<std::string>> Sol2ScriptingEnvironment::GetExcludableCla
     }
 }
 
+std::vector<std::pair<std::string, float>> Sol2ScriptingEnvironment::GetUrbanShareWeights()
+{
+    auto &context = GetSol2Context();
+    BOOST_ASSERT(context.state.lua_state() != nullptr);
+    std::vector<std::pair<std::string, float>> weights;
+    switch (context.api_version)
+    {
+    case 4:
+    case 3:
+    case 2:
+    {
+        sol::optional<sol::table> table = context.profile_table["urban_share_weights"];
+        if (table && table->valid())
+        {
+            for (auto &&pair : *table)
+            {
+                if (!pair.first.is<std::string>() || !pair.second.is<double>())
+                {
+                    throw util::exception(
+                        "urban_share_weights must map class names to numbers, e.g. "
+                        "urban_share_weights = { urban = 1.0, suburban = 0.5 }");
+                }
+                weights.emplace_back(pair.first.as<std::string>(),
+                                     static_cast<float>(pair.second.as<double>()));
+            }
+        }
+        break;
+    }
+    default:
+        break;
+    }
+    return weights;
+}
+
 std::vector<std::string> Sol2ScriptingEnvironment::GetClassNames()
 {
     auto &context = GetSol2Context();

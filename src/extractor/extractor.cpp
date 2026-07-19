@@ -148,6 +148,32 @@ void SetExcludableClasses(const ExtractorCallbacks::ClassesMap &classes_map,
     }
 }
 
+// Resolves the profile's urban_share_weights (class name -> weight) into the
+// bit-indexed LUT serialized to .osrm.urban_config
+UrbanClassWeights MakeUrbanClassWeights(
+    const std::vector<std::pair<std::string, float>> &urban_share_weights,
+    const ExtractorCallbacks::ClassesMap &classes_map)
+{
+    UrbanClassWeights weights{};
+    for (const auto &[name, weight] : urban_share_weights)
+    {
+        auto iter = classes_map.find(name);
+        if (iter == classes_map.end())
+        {
+            throw util::exception("urban_share_weights uses unknown class name: " + name +
+                                  ". Class names must be declared in the profile's classes list.");
+        }
+        if (weight < 0.f || weight > 1.f)
+        {
+            throw util::exception("urban_share_weights[" + name + "] must be within [0, 1].");
+        }
+        auto range = getClassIndexes(iter->second);
+        BOOST_ASSERT(range.size() == 1);
+        weights[range.front()] = weight;
+    }
+    return weights;
+}
+
 std::vector<CompressedNodeBasedGraphEdge> toEdgeList(const util::NodeBasedDynamicGraph &graph)
 {
     std::vector<CompressedNodeBasedGraphEdge> edges;
@@ -618,6 +644,13 @@ Extractor::ParsedOSMData Extractor::ParseOSMData(ScriptingEnvironment &scripting
     auto excludable_classes = scripting_environment.GetExcludableClasses();
     SetExcludableClasses(classes_map, excludable_classes, profile_properties);
     files::writeProfileProperties(config.GetPath(".osrm.properties").string(), profile_properties);
+
+    const auto urban_share_weights = scripting_environment.GetUrbanShareWeights();
+    if (!urban_share_weights.empty())
+    {
+        files::writeUrbanConfig(config.GetPath(".osrm.urban_config"),
+                                MakeUrbanClassWeights(urban_share_weights, classes_map));
+    }
 
     TIMER_STOP(extracting);
     util::Log() << "extraction finished after " << TIMER_SEC(extracting) << "s";
