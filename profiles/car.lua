@@ -145,6 +145,8 @@ function setup()
       'vehicle'
     },
 
+    -- at the 7-class cap (MAX_CLASS_INDEX + 1): adding another class makes
+    -- osrm-extract throw — drop or merge one first
     classes = Sequence {
         'toll', 'motorway', 'ferry', 'restricted', 'tunnel', 'urban', 'suburban'
     },

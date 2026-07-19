@@ -30,6 +30,13 @@ UrbanClassifier.zone_keys = Sequence {
   'source:maxspeed', 'maxspeed:type', 'zone:maxspeed', 'zone:traffic', 'maxspeed'
 }
 
+-- Keys whose value is a zone statement even when it is a bare number
+-- (zone:maxspeed=30 means a 30-zone; maxspeed=30 is just a limit and must go
+-- through the numeric tiers with their directional-minimum handling instead).
+UrbanClassifier.bare_number_zone_keys = Set {
+  'zone:maxspeed', 'zone:traffic'
+}
+
 -- Highway types that are inherently built-up regardless of tags.
 UrbanClassifier.urban_highways = Set {
   'residential', 'living_street', 'pedestrian'
@@ -54,18 +61,30 @@ UrbanClassifier.lit_fallback_highways = Set {
 
 -- Zone-value matching -------------------------------------------------------
 
--- Classifies a legal-zone tag value: 'urban', 'rural' or nil (no statement).
+-- Classifies a legal-zone tag value: 'urban', 'suburban', 'rural' or nil (no
+-- statement). Matching is case-insensitive.
 -- Examples: DE:urban, AT:urban, urban        -> urban
 --           DE:zone30, DE:zone:30            -> urban (30-zones are built-up)
+--           DE:30, AT:30, CH:30              -> urban (the wiki-documented
+--                                               zone:maxspeed number form)
+--           AT:city_limit30, AT:city_limit40 -> urban (limit posted at the
+--                                               Ortstafel, applies to the whole
+--                                               built-up area)
 --           DE:living_street, DE:bicycle_road-> urban
 --           DE:rural, AT:rural, rural        -> rural
 --           DE:motorway, AT:motorway         -> rural
-local function classify_zone_value(v)
+--           sign, DE:sign:274-70, DE:274.1   -> nil (explicit signs and
+--                                               traffic-sign codes carry no
+--                                               urban statement; the number
+--                                               parse is anchored so sign codes
+--                                               never sneak through it)
+local function classify_zone_value(v, allow_bare_number)
   if not v or v == '' then
     return nil
   end
+  v = v:lower()
   if v == 'urban' or v:sub(-6) == ':urban' or
-     v:find('zone', 1, true) or
+     v:find('zone', 1, true) or v:find('city_limit', 1, true) or
      v:sub(-14) == ':living_street' or v:sub(-13) == ':bicycle_road' then
     return 'urban'
   end
@@ -73,6 +92,21 @@ local function classify_zone_value(v)
      v == 'motorway' or v:sub(-9) == ':motorway' or
      v:sub(-6) == ':trunk' then
     return 'rural'
+  end
+  -- country-prefixed zone number (zone:maxspeed=DE:30 is the standard German
+  -- 30-zone form, ~163k ways): tier it like a numeric limit
+  local kmh = tonumber(v:match('^%a%a:(%d+)$'))
+  if not kmh and allow_bare_number then
+    kmh = tonumber(v:match('^(%d+)$'))
+  end
+  if kmh then
+    if kmh <= UrbanClassifier.urban_max_kmh then
+      return 'urban'
+    elseif kmh <= UrbanClassifier.suburban_max_kmh then
+      return 'suburban'
+    else
+      return 'rural'
+    end
   end
   return nil
 end
@@ -110,11 +144,12 @@ function UrbanClassifier.tier(way, data)
 
   -- 2. explicit legal-zone statement wins
   for _, key in ipairs(UrbanClassifier.zone_keys) do
-    local zone = classify_zone_value(way:get_value_by_key(key))
-    if zone == 'urban' then
-      return 'urban'
-    elseif zone == 'rural' then
+    local zone = classify_zone_value(way:get_value_by_key(key),
+                                     UrbanClassifier.bare_number_zone_keys[key])
+    if zone == 'rural' then
       return nil
+    elseif zone then
+      return zone
     end
   end
 
@@ -158,9 +193,15 @@ function UrbanClassifier.classify(profile, way, result, data)
     return
   end
 
-  local allowed_classes = Set {}
-  for k, v in pairs(profile.classes) do
-    allowed_classes[v] = true
+  -- memoized on the profile: rebuilding this Set per way is measurable on
+  -- planet-sized extracts
+  local allowed_classes = profile._urban_allowed_classes
+  if not allowed_classes then
+    allowed_classes = Set {}
+    for k, v in pairs(profile.classes) do
+      allowed_classes[v] = true
+    end
+    profile._urban_allowed_classes = allowed_classes
   end
   if not allowed_classes['urban'] then
     return
