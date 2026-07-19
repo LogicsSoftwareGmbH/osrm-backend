@@ -10,22 +10,16 @@
 namespace osrm::contractor::files
 {
 // reads .osrm.urban
+template <typename UrbanVectorT, typename WeightsVectorT>
 inline void readUrbanData(const std::filesystem::path &path,
                           const std::string &metric_name,
-                          std::vector<EdgeDistance> &urban_meters,
-                          extractor::UrbanClassWeights &class_weights)
+                          UrbanVectorT &urban_meters,
+                          WeightsVectorT &class_weights)
 {
     const auto fingerprint = storage::tar::FileReader::VerifyFingerprint;
     storage::tar::FileReader reader{path, fingerprint};
 
-    std::vector<float> weights;
-    storage::serialization::read(reader, "/common/urban_class_weights", weights);
-    if (weights.size() != class_weights.size())
-    {
-        throw util::exception("Unexpected urban_class_weights size in " + path.string());
-    }
-    std::copy(weights.begin(), weights.end(), class_weights.begin());
-
+    storage::serialization::read(reader, "/common/urban_class_weights", class_weights);
     storage::serialization::read(
         reader, "/ch/metrics/" + metric_name + "/urban_meters", urban_meters);
 }

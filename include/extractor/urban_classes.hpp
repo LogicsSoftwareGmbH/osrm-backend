@@ -21,7 +21,11 @@ namespace osrm::extractor
 // downstream tool has to deal with class names.
 using UrbanClassWeights = std::array<float, MAX_CLASS_INDEX + 2>;
 
-inline float urbanClassRatio(const ClassData classes, const UrbanClassWeights &weights)
+// WeightsT is any random-access container of float with at least
+// MAX_CLASS_INDEX + 1 entries (UrbanClassWeights or a vector view over the
+// serialized LUT)
+template <typename WeightsT>
+inline float urbanClassRatio(const ClassData classes, const WeightsT &weights)
 {
     float ratio = 0.f;
     for (std::uint8_t bit = 0; bit <= MAX_CLASS_INDEX; ++bit)

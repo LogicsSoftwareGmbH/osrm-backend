@@ -330,6 +330,7 @@ std::vector<std::pair<bool, std::filesystem::path>> Storage::GetUpdatableFiles()
         {IS_OPTIONAL, config.GetPath(".osrm.mldgr")},
         {IS_OPTIONAL, config.GetPath(".osrm.cell_metrics")},
         {IS_OPTIONAL, config.GetPath(".osrm.hsgr")},
+        {IS_OPTIONAL, config.GetPath(".osrm.urban")},
         {IS_REQUIRED, config.GetPath(".osrm.datasource_names")},
         {IS_REQUIRED, config.GetPath(".osrm.geometry")},
         {IS_REQUIRED, config.GetPath(".osrm.turn_weight_penalties")},
@@ -567,6 +568,15 @@ void Storage::PopulateUpdatableData(const SharedDataIndex &index)
                     " in " + config.GetPath(".osrm.edges").string());
             }
         }
+    }
+
+    if (std::filesystem::exists(config.GetPath(".osrm.urban")))
+    {
+        auto urban_meters =
+            make_vector_view<EdgeDistance>(index, "/ch/metrics/" + metric_name + "/urban_meters");
+        auto urban_class_weights = make_vector_view<float>(index, "/common/urban_class_weights");
+        contractor::files::readUrbanData(
+            config.GetPath(".osrm.urban"), metric_name, urban_meters, urban_class_weights);
     }
 
     if (std::filesystem::exists(config.GetPath(".osrm.cell_metrics")))
