@@ -12,6 +12,7 @@ resolve_access = require("lib/access").resolve_access
 limit = require("lib/maxspeed").limit
 Utils = require("lib/utils")
 Measure = require("lib/measure")
+UrbanClassifier = require("lib/urban_classifier")
 
 function setup()
   return {
@@ -145,7 +146,7 @@ function setup()
     },
 
     classes = Sequence {
-        'toll', 'motorway', 'ferry', 'restricted', 'tunnel'
+        'toll', 'motorway', 'ferry', 'restricted', 'tunnel', 'urban', 'suburban'
     },
 
     -- classes to support for exclude flags
@@ -153,6 +154,14 @@ function setup()
         Set {'toll'},
         Set {'motorway'},
         Set {'ferry'}
+    },
+
+    -- weights for the urban_meters side-car consumed by the /table annotation
+    -- `urban_share` (see lib/urban_classifier.lua); classes without an entry
+    -- count as 0 (rural)
+    urban_share_weights = {
+        urban = 1.0,
+        suburban = 0.5
     },
 
     avoid = Set {
@@ -503,6 +512,7 @@ function process_way(profile, way, result, relations)
 
     -- compute class labels
     WayHandlers.classes,
+    UrbanClassifier.classify,
 
     -- handle turn lanes and road classification, used for guidance
     WayHandlers.turn_lanes,
