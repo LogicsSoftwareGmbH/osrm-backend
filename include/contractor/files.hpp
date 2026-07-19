@@ -14,11 +14,13 @@ template <typename UrbanVectorT, typename WeightsVectorT>
 inline void readUrbanData(const std::filesystem::path &path,
                           const std::string &metric_name,
                           UrbanVectorT &urban_meters,
-                          WeightsVectorT &class_weights)
+                          WeightsVectorT &class_weights,
+                          std::uint32_t &connectivity_checksum)
 {
     const auto fingerprint = storage::tar::FileReader::VerifyFingerprint;
     storage::tar::FileReader reader{path, fingerprint};
 
+    reader.ReadInto("/ch/connectivity_checksum", connectivity_checksum);
     storage::serialization::read(reader, "/common/urban_class_weights", class_weights);
     storage::serialization::read(
         reader, "/ch/metrics/" + metric_name + "/urban_meters", urban_meters);
@@ -26,14 +28,21 @@ inline void readUrbanData(const std::filesystem::path &path,
 
 // writes .osrm.urban: the per-edge urban_meters vector positionally parallel
 // to the metric's contracted edge array, plus the class-weight LUT needed at
-// query time for phantom-node seeding
+// query time for phantom-node seeding. The connectivity checksum of the
+// .osrm.hsgr written in the same run binds the side-car to its graph: storage
+// ignores the file (with a warning) when the checksum or the per-metric edge
+// counts stop matching, e.g. after a re-contract that did not regenerate it
 inline void writeUrbanData(const std::filesystem::path &path,
                            const std::string &metric_name,
                            const std::vector<EdgeDistance> &urban_meters,
-                           const extractor::UrbanClassWeights &class_weights)
+                           const extractor::UrbanClassWeights &class_weights,
+                           const std::uint32_t connectivity_checksum)
 {
     const auto fingerprint = storage::tar::FileWriter::GenerateFingerprint;
     storage::tar::FileWriter writer{path, fingerprint};
+
+    writer.WriteElementCount64("/ch/connectivity_checksum", 1);
+    writer.WriteFrom("/ch/connectivity_checksum", connectivity_checksum);
 
     const std::vector<float> weights(class_weights.begin(), class_weights.end());
     storage::serialization::write(writer, "/common/urban_class_weights", weights);

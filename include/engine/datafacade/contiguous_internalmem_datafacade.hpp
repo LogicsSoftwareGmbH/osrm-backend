@@ -130,6 +130,7 @@ class ContiguousInternalMemoryAlgorithmDataFacade<CH> : public datafacade::Algor
     EdgeDistance GetUrbanMeters(const EdgeID edge_based_edge_id) const override final
     {
         BOOST_ASSERT(m_has_urban_data);
+        BOOST_ASSERT(edge_based_edge_id < m_urban_meters.size());
         return m_urban_meters[edge_based_edge_id];
     }
 

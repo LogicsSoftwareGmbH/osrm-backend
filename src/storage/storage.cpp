@@ -186,6 +186,79 @@ void populateLayoutFromFile(const std::filesystem::path &path, storage::BaseData
     }
 }
 
+namespace
+{
+// .osrm.urban carries per-edge data positionally parallel to the .osrm.hsgr edge
+// array but lives in a separate file, so a partial re-preprocessing — e.g. a stock
+// osrm-contract run that rewrites .osrm.hsgr and knows nothing about the side-car —
+// can leave a stale copy behind that would silently misalign. Only accept the
+// side-car when the connectivity checksum and the per-metric edge counts it
+// recorded match the graph next to it; otherwise the dataset behaves as if it
+// carried no urban data at all. Every load path (osrm-datastore, in-process and
+// mmap) goes through GetUpdatableFiles, which applies this predicate.
+bool urbanSideCarMatchesGraph(const std::filesystem::path &urban_path,
+                              const std::filesystem::path &hsgr_path)
+{
+    if (!std::filesystem::exists(urban_path))
+    {
+        return false;
+    }
+    try
+    {
+        if (!std::filesystem::exists(hsgr_path))
+        {
+            throw util::exception("no " + hsgr_path.string() + " to match it against");
+        }
+
+        tar::FileReader urban_reader(urban_path, tar::FileReader::VerifyFingerprint);
+        tar::FileReader hsgr_reader(hsgr_path, tar::FileReader::VerifyFingerprint);
+
+        std::uint32_t urban_checksum = 0;
+        std::uint32_t graph_checksum = 0;
+        urban_reader.ReadInto("/ch/connectivity_checksum", urban_checksum);
+        hsgr_reader.ReadInto("/ch/connectivity_checksum", graph_checksum);
+        if (urban_checksum != graph_checksum)
+        {
+            throw util::exception("connectivity checksum " + std::to_string(urban_checksum) +
+                                  " does not match " + std::to_string(graph_checksum) + " in " +
+                                  hsgr_path.string());
+        }
+
+        std::vector<tar::FileReader::FileEntry> entries;
+        urban_reader.List(std::back_inserter(entries));
+        const std::string prefix = "/ch/metrics/";
+        const std::string suffix = "/urban_meters";
+        for (const auto &entry : entries)
+        {
+            if (entry.name.size() > prefix.size() + suffix.size() &&
+                entry.name.compare(0, prefix.size(), prefix) == 0 &&
+                entry.name.compare(entry.name.size() - suffix.size(), suffix.size(), suffix) == 0)
+            {
+                const auto metric = entry.name.substr(
+                    prefix.size(), entry.name.size() - prefix.size() - suffix.size());
+                const auto urban_count = urban_reader.ReadElementCount64(entry.name);
+                const auto edge_count = hsgr_reader.ReadElementCount64(
+                    prefix + metric + "/contracted_graph/edge_array");
+                if (urban_count != edge_count)
+                {
+                    throw util::exception("metric " + metric + " has " +
+                                          std::to_string(urban_count) +
+                                          " urban_meters entries but the graph has " +
+                                          std::to_string(edge_count) + " edges");
+                }
+            }
+        }
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        util::Log(logWARNING) << "Ignoring stale urban side-car " << urban_path << ": " << e.what()
+                              << ". Re-run osrm-contract to regenerate it.";
+        return false;
+    }
+}
+} // namespace
+
 Storage::Storage(StorageConfig config_) : config(std::move(config_)) {}
 
 int Storage::Run(int max_wait, const std::string &dataset_name, bool only_metric)
@@ -331,12 +404,21 @@ std::vector<std::pair<bool, std::filesystem::path>> Storage::GetUpdatableFiles()
         {IS_OPTIONAL, config.GetPath(".osrm.mldgr")},
         {IS_OPTIONAL, config.GetPath(".osrm.cell_metrics")},
         {IS_OPTIONAL, config.GetPath(".osrm.hsgr")},
-        {IS_OPTIONAL, config.GetPath(".osrm.urban")},
-        {IS_OPTIONAL, config.GetPath(".osrm.urban_config")},
         {IS_REQUIRED, config.GetPath(".osrm.datasource_names")},
         {IS_REQUIRED, config.GetPath(".osrm.geometry")},
         {IS_REQUIRED, config.GetPath(".osrm.turn_weight_penalties")},
         {IS_REQUIRED, config.GetPath(".osrm.turn_duration_penalties")}};
+
+    // the urban side-car participates only when it provably belongs to the graph
+    // next to it. .osrm.urban_config comes after it so that the extract-side
+    // class-weight LUT wins over the copy embedded in .osrm.urban — the mmap
+    // loader resolves the duplicate block name by last-file-wins, matching the
+    // copy order in PopulateUpdatableData
+    if (urbanSideCarMatchesGraph(config.GetPath(".osrm.urban"), config.GetPath(".osrm.hsgr")))
+    {
+        files.emplace_back(IS_OPTIONAL, config.GetPath(".osrm.urban"));
+    }
+    files.emplace_back(IS_OPTIONAL, config.GetPath(".osrm.urban_config"));
 
     for (const auto &file : files)
     {
@@ -572,9 +654,25 @@ void Storage::PopulateUpdatableData(const SharedDataIndex &index)
         }
     }
 
-    // the class-weight LUT block is carried by both urban side-car files; reading the
-    // extract-side config makes it available on datasets that never ran osrm-contract
-    // (MLD), while .osrm.urban keeps supplying it on legacy directories
+    // same predicate as GetUpdatableFiles: a stale side-car never made it into the
+    // layout, so it must not be read here either
+    if (urbanSideCarMatchesGraph(config.GetPath(".osrm.urban"), config.GetPath(".osrm.hsgr")))
+    {
+        auto urban_meters =
+            make_vector_view<EdgeDistance>(index, "/ch/metrics/" + metric_name + "/urban_meters");
+        auto urban_class_weights = make_vector_view<float>(index, "/common/urban_class_weights");
+        std::uint32_t urban_connectivity_checksum = 0;
+        contractor::files::readUrbanData(config.GetPath(".osrm.urban"),
+                                         metric_name,
+                                         urban_meters,
+                                         urban_class_weights,
+                                         urban_connectivity_checksum);
+    }
+
+    // the class-weight LUT block is carried by both urban side-car files; the
+    // extract-side config is read second so its values win over the copy embedded
+    // in .osrm.urban, and it makes the LUT available on datasets that never ran
+    // osrm-contract (MLD)
     if (std::filesystem::exists(config.GetPath(".osrm.urban_config")))
     {
         extractor::UrbanClassWeights urban_config_weights;
@@ -583,15 +681,6 @@ void Storage::PopulateUpdatableData(const SharedDataIndex &index)
         auto urban_class_weights = make_vector_view<float>(index, "/common/urban_class_weights");
         std::copy(
             urban_config_weights.begin(), urban_config_weights.end(), urban_class_weights.begin());
-    }
-
-    if (std::filesystem::exists(config.GetPath(".osrm.urban")))
-    {
-        auto urban_meters =
-            make_vector_view<EdgeDistance>(index, "/ch/metrics/" + metric_name + "/urban_meters");
-        auto urban_class_weights = make_vector_view<float>(index, "/common/urban_class_weights");
-        contractor::files::readUrbanData(
-            config.GetPath(".osrm.urban"), metric_name, urban_meters, urban_class_weights);
     }
 
     if (std::filesystem::exists(config.GetPath(".osrm.cell_metrics")))

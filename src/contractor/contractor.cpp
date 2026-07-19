@@ -117,8 +117,17 @@ int Contractor::Run()
 
     if (has_urban_config)
     {
-        files::writeUrbanData(
-            config.GetPath(".osrm.urban"), metric_name, urban_meters, urban_class_weights);
+        files::writeUrbanData(config.GetPath(".osrm.urban"),
+                              metric_name,
+                              urban_meters,
+                              urban_class_weights,
+                              connectivity_checksum);
+    }
+    else
+    {
+        // outputs are always regenerated: a stale side-car from an earlier
+        // urban-enabled run must not survive a re-contract without urban_config
+        std::filesystem::remove(config.GetPath(".osrm.urban"));
     }
 
     TIMER_STOP(preparing);

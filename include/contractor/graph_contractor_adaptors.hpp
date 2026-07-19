@@ -101,6 +101,13 @@ ContractorGraph toContractorGraph(NodeID number_of_nodes,
         forward_edge.data.distance = reverse_edge.data.distance = MAXIMAL_EDGE_DISTANCE;
         forward_edge.data.urban_meters = reverse_edge.data.urban_meters = MAXIMAL_EDGE_DISTANCE;
         // remove parallel edges
+        //
+        // each metric takes its own independent min below (matching how upstream
+        // already treats distance vs weight), so the surviving urban_meters and
+        // distance can come from *different* parallel edges. The resulting
+        // urban/distance ratio stays bounded (urban_meters <= distance on every
+        // edge, and the table API clamps to [0, 1]) but can describe a slightly
+        // different edge mix than the weight-chosen path — accepted inaccuracy
         while (i < edges.size() && edges[i].source == source && edges[i].target == target)
         {
             if (edges[i].data.forward)
