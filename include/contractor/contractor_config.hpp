@@ -39,8 +39,9 @@ namespace osrm::contractor
 struct ContractorConfig final : storage::IOConfig
 {
     ContractorConfig()
-        : IOConfig(
-              {".osrm.ebg", ".osrm.ebg_nodes", ".osrm.properties"}, {}, {".osrm.hsgr", ".osrm.enw"})
+        : IOConfig({".osrm.ebg", ".osrm.ebg_nodes", ".osrm.properties"},
+                   {".osrm.urban_config"},
+                   {".osrm.hsgr", ".osrm.enw", ".osrm.urban"})
     {
     }
 

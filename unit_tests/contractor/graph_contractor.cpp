@@ -149,7 +149,7 @@ BOOST_AUTO_TEST_CASE(contract_excludable_graph)
                                              {2, 3, 1},
                                              {3, 0, 1}});
 
-        auto [query_graph, ignore] = contractExcludableGraph(
+        auto [query_graph, ignore, ignore_urban] = contractExcludableGraph(
             g, {{1}, {1}, {1}, {1}}, {{true, true, true, true}, {false, true, true, true}});
 
         HAS(1, 0)

@@ -14,8 +14,14 @@ namespace osrm::contractor
 {
 
 // Make sure to move in the input edge list!
+// node_urban_ratio, when given, holds the urban class weight per edge-based
+// node; a turn edge's payload is then urban_meters = ratio[source] * distance
+// (the edge's distance is exactly its source node's length, and classes are
+// uniform over it since graph compression only merges equal-class edges).
 template <typename InputEdgeContainer>
-ContractorGraph toContractorGraph(NodeID number_of_nodes, const InputEdgeContainer &input_edge_list)
+ContractorGraph toContractorGraph(NodeID number_of_nodes,
+                                  const InputEdgeContainer &input_edge_list,
+                                  const std::vector<float> *node_urban_ratio = nullptr)
 {
     std::vector<ContractorEdge> edges;
     edges.reserve(input_edge_list.size() * 2);
@@ -24,6 +30,12 @@ ContractorGraph toContractorGraph(NodeID number_of_nodes, const InputEdgeContain
     {
         if (input_edge.data.weight == INVALID_EDGE_WEIGHT)
             continue;
+
+        const auto urban_meters =
+            node_urban_ratio
+                ? to_alias<EdgeDistance>((*node_urban_ratio)[input_edge.source] *
+                                         from_alias<float>(input_edge.data.distance))
+                : EdgeDistance{0};
 
 #ifndef NDEBUG
         const unsigned int constexpr DAY_IN_DECI_SECONDS = 24 * 60 * 60 * 10;
@@ -46,7 +58,8 @@ ContractorGraph toContractorGraph(NodeID number_of_nodes, const InputEdgeContain
                            input_edge.data.turn_id,
                            false,
                            input_edge.data.forward ? true : false,
-                           input_edge.data.backward ? true : false);
+                           input_edge.data.backward ? true : false,
+                           urban_meters);
 
         edges.emplace_back(input_edge.target,
                            input_edge.source,
@@ -57,7 +70,8 @@ ContractorGraph toContractorGraph(NodeID number_of_nodes, const InputEdgeContain
                            input_edge.data.turn_id,
                            false,
                            input_edge.data.backward ? true : false,
-                           input_edge.data.forward ? true : false);
+                           input_edge.data.forward ? true : false,
+                           urban_meters);
     };
     tbb::parallel_sort(edges.begin(), edges.end());
 
@@ -85,6 +99,7 @@ ContractorGraph toContractorGraph(NodeID number_of_nodes, const InputEdgeContain
         forward_edge.data.weight = reverse_edge.data.weight = INVALID_EDGE_WEIGHT;
         forward_edge.data.duration = reverse_edge.data.duration = MAXIMAL_EDGE_DURATION;
         forward_edge.data.distance = reverse_edge.data.distance = MAXIMAL_EDGE_DISTANCE;
+        forward_edge.data.urban_meters = reverse_edge.data.urban_meters = MAXIMAL_EDGE_DISTANCE;
         // remove parallel edges
         while (i < edges.size() && edges[i].source == source && edges[i].target == target)
         {
@@ -95,6 +110,8 @@ ContractorGraph toContractorGraph(NodeID number_of_nodes, const InputEdgeContain
                     std::min(edges[i].data.duration, forward_edge.data.duration);
                 forward_edge.data.distance =
                     std::min(edges[i].data.distance, forward_edge.data.distance);
+                forward_edge.data.urban_meters =
+                    std::min(edges[i].data.urban_meters, forward_edge.data.urban_meters);
             }
             if (edges[i].data.backward)
             {
@@ -103,6 +120,8 @@ ContractorGraph toContractorGraph(NodeID number_of_nodes, const InputEdgeContain
                     std::min(edges[i].data.duration, reverse_edge.data.duration);
                 reverse_edge.data.distance =
                     std::min(edges[i].data.distance, reverse_edge.data.distance);
+                reverse_edge.data.urban_meters =
+                    std::min(edges[i].data.urban_meters, reverse_edge.data.urban_meters);
             }
             ++i;
         }
@@ -165,6 +184,10 @@ template <class Edge, typename GraphT> inline std::vector<Edge> toEdges(GraphT g
                                  "edge id invalid");
                 new_edge.data.forward = data.forward;
                 new_edge.data.backward = data.backward;
+                if constexpr (requires { new_edge.urban_meters; })
+                {
+                    new_edge.urban_meters = data.urban_meters;
+                }
             }
         }
         BOOST_ASSERT(edge_index == edges.size());

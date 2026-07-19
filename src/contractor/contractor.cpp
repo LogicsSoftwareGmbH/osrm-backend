@@ -68,6 +68,10 @@ int Contractor::Run()
 
     std::string metric_name;
     std::vector<std::vector<bool>> node_filters;
+    std::vector<float> node_urban_ratio;
+    extractor::UrbanClassWeights urban_class_weights{};
+    const bool has_urban_config =
+        std::filesystem::exists(config.GetPath(".osrm.urban_config"));
     {
         extractor::EdgeBasedNodeDataContainer node_data;
         extractor::files::readNodeData(config.GetPath(".osrm.ebg_nodes"), node_data);
@@ -78,15 +82,30 @@ int Contractor::Run()
 
         node_filters =
             util::excludeFlagsToNodeFilter(number_of_edge_based_nodes, node_data, properties);
+
+        if (has_urban_config)
+        {
+            extractor::files::readUrbanConfig(config.GetPath(".osrm.urban_config"),
+                                              urban_class_weights);
+            node_urban_ratio.resize(number_of_edge_based_nodes);
+            for (NodeID node = 0; node < number_of_edge_based_nodes; ++node)
+            {
+                node_urban_ratio[node] =
+                    extractor::urbanClassRatio(node_data.GetClassData(node), urban_class_weights);
+            }
+        }
     }
 
     QueryGraph query_graph;
     std::vector<std::vector<bool>> edge_filters;
+    std::vector<EdgeDistance> urban_meters;
     std::vector<std::vector<bool>> cores;
-    std::tie(query_graph, edge_filters) =
-        contractExcludableGraph(toContractorGraph(number_of_edge_based_nodes, edge_based_edge_list),
-                                std::move(node_weights),
-                                node_filters);
+    std::tie(query_graph, edge_filters, urban_meters) = contractExcludableGraph(
+        toContractorGraph(number_of_edge_based_nodes,
+                          edge_based_edge_list,
+                          has_urban_config ? &node_urban_ratio : nullptr),
+        std::move(node_weights),
+        node_filters);
     TIMER_STOP(contraction);
     util::Log() << "Contracted graph has " << query_graph.GetNumberOfEdges() << " edges.";
     util::Log() << "Contraction took " << TIMER_SEC(contraction) << " sec";
@@ -95,6 +114,12 @@ int Contractor::Run()
         {metric_name, {std::move(query_graph), std::move(edge_filters)}}};
 
     files::writeGraph(config.GetPath(".osrm.hsgr"), metrics, connectivity_checksum);
+
+    if (has_urban_config)
+    {
+        files::writeUrbanData(
+            config.GetPath(".osrm.urban"), metric_name, urban_meters, urban_class_weights);
+    }
 
     TIMER_STOP(preparing);
 

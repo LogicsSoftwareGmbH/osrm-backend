@@ -33,32 +33,32 @@ BOOST_AUTO_TEST_CASE(merge_edge_of_multiple_graph)
 {
     ContractedEdgeContainer container;
 
-    std::vector<QueryEdge> edges;
-    edges.push_back(QueryEdge{0, 1, {1, false, {3}, {3}, {6}, true, false}});
-    edges.push_back(QueryEdge{1, 2, {2, false, {3}, {3}, {6}, true, false}});
-    edges.push_back(QueryEdge{2, 0, {3, false, {3}, {3}, {6}, false, true}});
-    edges.push_back(QueryEdge{2, 1, {4, false, {3}, {3}, {6}, false, true}});
+    std::vector<UrbanQueryEdge> edges;
+    edges.push_back(UrbanQueryEdge{0, 1, {1, false, {3}, {3}, {6}, true, false}});
+    edges.push_back(UrbanQueryEdge{1, 2, {2, false, {3}, {3}, {6}, true, false}});
+    edges.push_back(UrbanQueryEdge{2, 0, {3, false, {3}, {3}, {6}, false, true}});
+    edges.push_back(UrbanQueryEdge{2, 1, {4, false, {3}, {3}, {6}, false, true}});
     container.Insert(edges);
 
     edges.clear();
-    edges.push_back(QueryEdge{0, 1, {1, false, {3}, {3}, {6}, true, false}});
-    edges.push_back(QueryEdge{1, 2, {2, false, {3}, {3}, {6}, true, false}});
-    edges.push_back(QueryEdge{2, 0, {3, false, {12}, {12}, {24}, false, true}});
-    edges.push_back(QueryEdge{2, 1, {4, false, {12}, {12}, {24}, false, true}});
+    edges.push_back(UrbanQueryEdge{0, 1, {1, false, {3}, {3}, {6}, true, false}});
+    edges.push_back(UrbanQueryEdge{1, 2, {2, false, {3}, {3}, {6}, true, false}});
+    edges.push_back(UrbanQueryEdge{2, 0, {3, false, {12}, {12}, {24}, false, true}});
+    edges.push_back(UrbanQueryEdge{2, 1, {4, false, {12}, {12}, {24}, false, true}});
     container.Merge(edges);
 
     edges.clear();
-    edges.push_back(QueryEdge{1, 4, {5, false, {3}, {3}, {6}, true, false}});
+    edges.push_back(UrbanQueryEdge{1, 4, {5, false, {3}, {3}, {6}, true, false}});
     container.Merge(edges);
 
     std::vector<QueryEdge> reference_edges;
-    reference_edges.push_back(QueryEdge{0, 1, {1, false, {3}, {3}, {6}, true, false}});
-    reference_edges.push_back(QueryEdge{1, 2, {2, false, {3}, {3}, {6}, true, false}});
-    reference_edges.push_back(QueryEdge{1, 4, {5, false, {3}, {3}, {6}, true, false}});
-    reference_edges.push_back(QueryEdge{2, 0, {3, false, {3}, {3}, {6}, false, true}});
-    reference_edges.push_back(QueryEdge{2, 0, {3, false, {12}, {12}, {24}, false, true}});
-    reference_edges.push_back(QueryEdge{2, 1, {4, false, {3}, {3}, {6}, false, true}});
-    reference_edges.push_back(QueryEdge{2, 1, {4, false, {12}, {12}, {24}, false, true}});
+    reference_edges.push_back(UrbanQueryEdge{0, 1, {1, false, {3}, {3}, {6}, true, false}});
+    reference_edges.push_back(UrbanQueryEdge{1, 2, {2, false, {3}, {3}, {6}, true, false}});
+    reference_edges.push_back(UrbanQueryEdge{1, 4, {5, false, {3}, {3}, {6}, true, false}});
+    reference_edges.push_back(UrbanQueryEdge{2, 0, {3, false, {3}, {3}, {6}, false, true}});
+    reference_edges.push_back(UrbanQueryEdge{2, 0, {3, false, {12}, {12}, {24}, false, true}});
+    reference_edges.push_back(UrbanQueryEdge{2, 1, {4, false, {3}, {3}, {6}, false, true}});
+    reference_edges.push_back(UrbanQueryEdge{2, 1, {4, false, {12}, {12}, {24}, false, true}});
     CHECK_EQUAL_COLLECTIONS(container.edges, reference_edges);
 
     auto filters = container.MakeEdgeFilters();
@@ -75,23 +75,23 @@ BOOST_AUTO_TEST_CASE(merge_edge_of_multiple_disjoint_graph)
 {
     ContractedEdgeContainer container;
 
-    std::vector<QueryEdge> edges;
-    edges.push_back(QueryEdge{0, 1, {1, false, {3}, {3}, {6}, true, false}});
-    edges.push_back(QueryEdge{1, 2, {2, false, {3}, {3}, {6}, true, false}});
-    edges.push_back(QueryEdge{2, 0, {3, false, {12}, {12}, {24}, false, true}});
-    edges.push_back(QueryEdge{2, 1, {4, false, {12}, {12}, {24}, false, true}});
+    std::vector<UrbanQueryEdge> edges;
+    edges.push_back(UrbanQueryEdge{0, 1, {1, false, {3}, {3}, {6}, true, false}});
+    edges.push_back(UrbanQueryEdge{1, 2, {2, false, {3}, {3}, {6}, true, false}});
+    edges.push_back(UrbanQueryEdge{2, 0, {3, false, {12}, {12}, {24}, false, true}});
+    edges.push_back(UrbanQueryEdge{2, 1, {4, false, {12}, {12}, {24}, false, true}});
     container.Merge(edges);
 
     edges.clear();
-    edges.push_back(QueryEdge{1, 4, {5, false, {3}, {3}, {6}, true, false}});
+    edges.push_back(UrbanQueryEdge{1, 4, {5, false, {3}, {3}, {6}, true, false}});
     container.Merge(edges);
 
     std::vector<QueryEdge> reference_edges;
-    reference_edges.push_back(QueryEdge{0, 1, {1, false, {3}, {3}, {6}, true, false}});
-    reference_edges.push_back(QueryEdge{1, 2, {2, false, {3}, {3}, {6}, true, false}});
-    reference_edges.push_back(QueryEdge{1, 4, {5, false, {3}, {3}, {6}, true, false}});
-    reference_edges.push_back(QueryEdge{2, 0, {3, false, {12}, {12}, {24}, false, true}});
-    reference_edges.push_back(QueryEdge{2, 1, {4, false, {12}, {12}, {24}, false, true}});
+    reference_edges.push_back(UrbanQueryEdge{0, 1, {1, false, {3}, {3}, {6}, true, false}});
+    reference_edges.push_back(UrbanQueryEdge{1, 2, {2, false, {3}, {3}, {6}, true, false}});
+    reference_edges.push_back(UrbanQueryEdge{1, 4, {5, false, {3}, {3}, {6}, true, false}});
+    reference_edges.push_back(UrbanQueryEdge{2, 0, {3, false, {12}, {12}, {24}, false, true}});
+    reference_edges.push_back(UrbanQueryEdge{2, 1, {4, false, {12}, {12}, {24}, false, true}});
     CHECK_EQUAL_COLLECTIONS(container.edges, reference_edges);
 
     auto filters = container.MakeEdgeFilters();
