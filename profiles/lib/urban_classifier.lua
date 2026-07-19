@@ -54,9 +54,13 @@ UrbanClassifier.urban_max_kmh = 40
 UrbanClassifier.suburban_max_kmh = 70
 
 -- Street-lit fallback: these highway types with lit=yes and no other signal
--- are treated as suburban (lit coverage in DACH is ~70% and skews built-up).
+-- are treated as suburban. lit tagging covers only ~40% of DACH ways (even on
+-- residential), so this tier has false negatives by design — but where the tag
+-- is present it is a clean built-up signal: 94.6% of lit-tagged German
+-- residential ways say yes, and lit=yes sits at 35-40% of primary, secondary
+-- and tertiary alike (vs 0.87% of motorway).
 UrbanClassifier.lit_fallback_highways = Set {
-  'unclassified', 'tertiary', 'tertiary_link'
+  'unclassified', 'tertiary', 'tertiary_link', 'secondary', 'primary'
 }
 
 -- Zone-value matching -------------------------------------------------------

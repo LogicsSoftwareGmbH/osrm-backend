@@ -38,3 +38,24 @@ Feature: Car - Urban classifier legal-zone value handling
             | d    | e  | road,road | 1             |
             | e    | f  | road,road | 0             |
             | f    | g  | road,road | 1             |
+
+    Scenario: Car - Street lighting is a suburban fallback on major roads too
+        Given the node map
+            """
+            a b c d
+            """
+
+        And the ways
+            | nodes | highway   | name | lit |
+            | ab    | secondary | road | yes |
+            | bc    | secondary | road |     |
+            | cd    | primary   | road | yes |
+
+        And the query options
+            | annotations | urban_share |
+
+        When I route I should get
+            | from | to | route     | a:urban_share |
+            | a    | b  | road,road | 0.5           |
+            | b    | c  | road,road | 0             |
+            | c    | d  | road,road | 0.5           |
