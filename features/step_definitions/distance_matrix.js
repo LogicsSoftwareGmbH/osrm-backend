@@ -16,6 +16,12 @@ const durationsCodeOnlyRegex = new RegExp(
 const distancesRegex = new RegExp(
   /^I request a travel distance matrix I should get$/
 );
+const urbanSharesRegex = new RegExp(
+  /^I request an urban share matrix I should get$/
+);
+const urbanSharesCodeOnlyRegex = new RegExp(
+  /^I request an urban share matrix with these waypoints I should get the response code$/
+);
 const estimatesRegex = new RegExp(
   /^I request a travel time matrix I should get estimates for$/
 );
@@ -42,6 +48,12 @@ When(durationsCodeOnlyRegex, async function (table) {
 When(distancesRegex, async function (table) {
   await tableParse.call(this, table, DISTANCES_NO_ROUTE, 'distances', FORMAT_JSON);
 });
+When(urbanSharesRegex, async function (table) {
+  await tableParse.call(this, table, DISTANCES_NO_ROUTE, 'urban_shares', FORMAT_JSON);
+});
+When(urbanSharesCodeOnlyRegex, async function (table) {
+  await tableCodeOnlyParse.call(this, table, 'urban_shares', FORMAT_JSON);
+});
 When(estimatesRegex, async function (table) {
   await tableParse.call(this, table, DISTANCES_NO_ROUTE, 'fallback_speed_cells', FORMAT_JSON);
 });
@@ -62,12 +74,17 @@ const estimatesParse = function (v) {
   return isNaN(parseFloat(v));
 };
 
+// which value the `annotations` request parameter takes per response annotation
+const annotationsParameter = {
+  durations: 'duration',
+  fallback_speed_cells: 'duration',
+  distances: 'distance',
+  urban_shares: 'urban_share',
+};
+
 async function tableCodeOnlyParse(table, annotation, format) {
   const params = this.queryParams;
-  params.annotations =
-    ['durations', 'fallback_speed_cells'].indexOf(annotation) !== -1
-      ? 'duration'
-      : 'distance';
+  params.annotations = annotationsParameter[annotation];
   params.output = format;
 
   let got;
@@ -125,16 +142,13 @@ async function tableCodeOnlyParse(table, annotation, format) {
 
 async function tableParse(table, noRoute, annotation, format) {
   const parse =
-    annotation == 'distances'
+    annotation == 'distances' || annotation == 'urban_shares'
       ? distancesParse
       : annotation == 'durations'
         ? durationsParse
         : estimatesParse;
   const params = this.queryParams;
-  params.annotations =
-    ['durations', 'fallback_speed_cells'].indexOf(annotation) !== -1
-      ? 'duration'
-      : 'distance';
+  params.annotations = annotationsParameter[annotation];
   params.output = format;
 
   const tableRows = table.raw();

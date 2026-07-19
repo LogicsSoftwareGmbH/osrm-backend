@@ -107,6 +107,10 @@ BOOST_AUTO_TEST_CASE(invalid_table_urls)
     BOOST_CHECK_EQUAL(
         testInvalidOptions<TableParameters>("1,2;3,4?sources=all&destinations=all&annotations=bla"),
         49UL);
+    BOOST_CHECK_EQUAL(testInvalidOptions<TableParameters>("1,2;3,4?annotations=urban"), 20UL);
+    // "urban_share" parses, the stray trailing 's' does not
+    BOOST_CHECK_EQUAL(testInvalidOptions<TableParameters>("1,2;3,4?annotations=urban_shares"),
+                      31UL);
     BOOST_CHECK_EQUAL(testInvalidOptions<TableParameters>("1,2;3,4?fallback_coordinate=asdf"),
                       28UL);
     BOOST_CHECK_EQUAL(testInvalidOptions<TableParameters>("1,2;3,4?fallback_coordinate=10"), 28UL);
@@ -626,6 +630,28 @@ BOOST_AUTO_TEST_CASE(valid_table_urls)
     BOOST_CHECK_EQUAL(result_8->annotations & TableParameters::AnnotationsType::Distance, true);
     CHECK_EQUAL_RANGE(reference_8.sources, result_8->sources);
     CHECK_EQUAL_RANGE(reference_8.destinations, result_8->destinations);
+
+    auto result_urban = parseParameters<TableParameters>("1,2;3,4?annotations=urban_share");
+    BOOST_CHECK(result_urban);
+    BOOST_CHECK_EQUAL(result_urban->annotations & TableParameters::AnnotationsType::UrbanShare,
+                      true);
+    BOOST_CHECK_EQUAL(result_urban->annotations & TableParameters::AnnotationsType::Duration,
+                      false);
+    BOOST_CHECK_EQUAL(result_urban->annotations & TableParameters::AnnotationsType::Distance,
+                      false);
+
+    auto result_urban_combined =
+        parseParameters<TableParameters>("1,2;3,4?annotations=duration,urban_share");
+    BOOST_CHECK(result_urban_combined);
+    BOOST_CHECK_EQUAL(result_urban_combined->annotations &
+                          TableParameters::AnnotationsType::Duration,
+                      true);
+    BOOST_CHECK_EQUAL(result_urban_combined->annotations &
+                          TableParameters::AnnotationsType::UrbanShare,
+                      true);
+    BOOST_CHECK_EQUAL(result_urban_combined->annotations &
+                          TableParameters::AnnotationsType::Distance,
+                      false);
 
     TableParameters reference_9{};
     reference_9.coordinates = coords_1;

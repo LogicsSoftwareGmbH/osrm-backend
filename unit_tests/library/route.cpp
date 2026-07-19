@@ -103,6 +103,9 @@ void test_route_same_coordinates_fixture(bool use_json_only_api)
                                                    json::Array{{json::Object{
                                                        {{"location", location},
                                                         {"bearings", json::Array{{238}}},
+                                                        // urban classifier tags Boulevard du
+                                                        // Larvotto (maxspeed 50) as suburban
+                                                        {"classes", json::Array{{"suburban"}}},
                                                         {"entry", json::Array{{json::True()}}},
                                                         {"out", 0}}}}}}}}},
 
