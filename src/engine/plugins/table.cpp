@@ -84,6 +84,14 @@ Status TablePlugin::HandleRequest(const RoutingAlgorithmsInterface &algorithms,
                      result);
     }
 
+    if (request_urban && !algorithms.HasUrbanData())
+    {
+        return Error("NoUrbanData",
+                     "Urban share data is not available for this dataset. Preprocess with a "
+                     "profile that declares urban_share_weights to enable it.",
+                     result);
+    }
+
     // urban_share is urban_meters / distance, so the distance table is needed as the
     // denominator even when the client did not ask for distances in the response.
     const bool calculate_distance = request_distance || request_urban;
@@ -95,8 +103,8 @@ Status TablePlugin::HandleRequest(const RoutingAlgorithmsInterface &algorithms,
                                                           calculate_distance,
                                                           request_urban ? &urban_table : nullptr);
 
-    // The search only fills the urban table when the dataset carries urban class data
-    // (preprocessed with a profile that sets urban_share_weights).
+    // defensive backstop: the HasUrbanData pre-check above guarantees the search
+    // fills the urban table, so this only fires if that invariant ever breaks
     if (request_urban && urban_table.empty())
     {
         return Error("NoUrbanData",

@@ -58,6 +58,9 @@ class RoutingAlgorithmsInterface
     virtual bool HasManyToManySearch() const = 0;
     virtual bool SupportsDistanceAnnotationType() const = 0;
     virtual bool SupportsUrbanShareAnnotation() const = 0;
+    // whether the loaded dataset carries the urban_meters side-car for this
+    // algorithm — lets plugins reject urban_share requests before paying for a search
+    virtual bool HasUrbanData() const = 0;
     virtual bool HasGetTileTurns() const = 0;
     virtual bool HasExcludeFlags() const = 0;
     virtual bool IsValid() const = 0;
@@ -140,6 +143,18 @@ class RoutingAlgorithms final : public RoutingAlgorithmsInterface
     bool SupportsUrbanShareAnnotation() const final override
     {
         return routing_algorithms::SupportsUrbanShareAnnotation<Algorithm>::value;
+    }
+
+    bool HasUrbanData() const final override
+    {
+        if constexpr (routing_algorithms::SupportsUrbanShareAnnotation<Algorithm>::value)
+        {
+            return facade->HasUrbanData();
+        }
+        else
+        {
+            return false;
+        }
     }
 
     bool HasGetTileTurns() const final override

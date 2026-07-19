@@ -471,11 +471,12 @@ double getNetworkDistance(SearchEngineData<Algorithm> &engine_working_data,
                           const PhantomNode &target_phantom,
                           EdgeWeight duration_upper_bound = INVALID_EDGE_WEIGHT);
 
-// the third tuple element is the loop edge's urban_meters (0 when the dataset
-// carries no urban side-car), taken from the same edge as the distance
+// the third tuple element is the loop edge's urban_meters, taken from the same
+// edge as the distance. calculate_urban may only be set when the dataset
+// carries the urban side-car; callers not interested in it pass false and get 0
 template <typename EdgeMetric>
 std::tuple<EdgeMetric, EdgeDistance, EdgeDistance>
-getLoopMetric(const DataFacade<Algorithm> &facade, NodeID node)
+getLoopMetric(const DataFacade<Algorithm> &facade, NodeID node, const bool calculate_urban)
 {
     EdgeMetric loop_metric;
     if constexpr (std::is_same<EdgeMetric, EdgeDuration>::value)
@@ -488,7 +489,6 @@ getLoopMetric(const DataFacade<Algorithm> &facade, NodeID node)
     }
     EdgeDistance loop_distance = MAXIMAL_EDGE_DISTANCE;
     EdgeDistance loop_urban = {0};
-    const bool has_urban = facade.HasUrbanData();
     for (auto edge : facade.GetAdjacentEdgeRange(node))
     {
         const auto &data = facade.GetEdgeData(edge);
@@ -510,7 +510,7 @@ getLoopMetric(const DataFacade<Algorithm> &facade, NodeID node)
                 {
                     loop_metric = value;
                     loop_distance = data.distance;
-                    loop_urban = has_urban ? facade.GetUrbanMeters(edge) : EdgeDistance{0};
+                    loop_urban = calculate_urban ? facade.GetUrbanMeters(edge) : EdgeDistance{0};
                 }
             }
         }

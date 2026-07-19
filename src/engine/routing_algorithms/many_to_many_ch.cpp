@@ -17,18 +17,19 @@ inline bool addLoopWeight(const DataFacade<ch::Algorithm> &facade,
                           EdgeWeight &weight,
                           EdgeDuration &duration,
                           EdgeDistance &distance,
-                          EdgeDistance &urban)
+                          EdgeDistance &urban,
+                          const bool calculate_urban)
 { // Special case for CH when contractor creates a loop edge node->node
     BOOST_ASSERT(weight < EdgeWeight{0});
 
-    const auto loop_weight = ch::getLoopMetric<EdgeWeight>(facade, node);
+    const auto loop_weight = ch::getLoopMetric<EdgeWeight>(facade, node, calculate_urban);
     if (std::get<0>(loop_weight) != INVALID_EDGE_WEIGHT)
     {
         const auto new_weight_with_loop = weight + std::get<0>(loop_weight);
         if (new_weight_with_loop >= EdgeWeight{0})
         {
             weight = new_weight_with_loop;
-            auto result = ch::getLoopMetric<EdgeDuration>(facade, node);
+            auto result = ch::getLoopMetric<EdgeDuration>(facade, node, calculate_urban);
             duration += std::get<0>(result);
             distance += std::get<1>(result);
             urban += std::get<2>(result);
@@ -47,9 +48,10 @@ inline bool addLoopWeight(const DataFacade<ch::Algorithm> &facade,
 template <typename ManyToManyQueryHeap>
 void insertSourceInHeapWithUrbanSeed(const DataFacade<Algorithm> &facade,
                                      ManyToManyQueryHeap &heap,
-                                     const PhantomNodeCandidates &source_candidates)
+                                     const PhantomNodeCandidates &source_candidates,
+                                     const bool calculate_urban)
 {
-    const bool has_urban = facade.HasUrbanData();
+    const bool has_urban = calculate_urban && facade.HasUrbanRatios();
     const auto urban_seed = [&](const SegmentID &segment, const EdgeDistance distance)
     {
         if (!has_urban)
@@ -88,9 +90,10 @@ void insertSourceInHeapWithUrbanSeed(const DataFacade<Algorithm> &facade,
 template <typename ManyToManyQueryHeap>
 void insertTargetInHeapWithUrbanSeed(const DataFacade<Algorithm> &facade,
                                      ManyToManyQueryHeap &heap,
-                                     const PhantomNodeCandidates &target_candidates)
+                                     const PhantomNodeCandidates &target_candidates,
+                                     const bool calculate_urban)
 {
-    const bool has_urban = facade.HasUrbanData();
+    const bool has_urban = calculate_urban && facade.HasUrbanRatios();
     const auto urban_seed = [&](const SegmentID &segment, const EdgeDistance distance)
     {
         if (!has_urban)
@@ -131,14 +134,13 @@ void relaxOutgoingEdges(
     const DataFacade<Algorithm> &facade,
     const typename SearchEngineData<Algorithm>::ManyToManyQueryHeap::HeapNode &heapNode,
     typename SearchEngineData<Algorithm>::ManyToManyQueryHeap &query_heap,
-    const PhantomNodeCandidates &)
+    const PhantomNodeCandidates &,
+    const bool calculate_urban)
 {
     if (stallAtNode<DIRECTION>(facade, heapNode, query_heap))
     {
         return;
     }
-
-    const bool has_urban = facade.HasUrbanData();
 
     for (auto edge : facade.GetAdjacentEdgeRange(heapNode.node))
     {
@@ -150,7 +152,8 @@ void relaxOutgoingEdges(
 
             const auto edge_duration = data.duration;
             const auto edge_distance = data.distance;
-            const auto edge_urban = has_urban ? facade.GetUrbanMeters(edge) : EdgeDistance{0};
+            const auto edge_urban =
+                calculate_urban ? facade.GetUrbanMeters(edge) : EdgeDistance{0};
 
             BOOST_ASSERT_MSG(edge_weight > EdgeWeight{0}, "edge_weight invalid");
             const auto to_weight = heapNode.weight + edge_weight;
@@ -187,7 +190,8 @@ void forwardRoutingStep(const DataFacade<Algorithm> &facade,
                         std::vector<EdgeDistance> &distances_table,
                         std::vector<EdgeDistance> &urban_table,
                         std::vector<NodeID> &middle_nodes_table,
-                        const PhantomNodeCandidates &candidates)
+                        const PhantomNodeCandidates &candidates,
+                        const bool calculate_urban)
 {
     // Take a copy of the extracted node because otherwise could be modified later if toHeapNode is
     // the same
@@ -228,8 +232,13 @@ void forwardRoutingStep(const DataFacade<Algorithm> &facade,
 
         if (new_weight < EdgeWeight{0})
         {
-            if (addLoopWeight(
-                    facade, heapNode.node, new_weight, new_duration, new_distance, new_urban))
+            if (addLoopWeight(facade,
+                              heapNode.node,
+                              new_weight,
+                              new_duration,
+                              new_distance,
+                              new_urban,
+                              calculate_urban))
             {
                 current_weight = std::min(current_weight, new_weight);
                 current_duration = std::min(current_duration, new_duration);
@@ -248,14 +257,16 @@ void forwardRoutingStep(const DataFacade<Algorithm> &facade,
         }
     }
 
-    relaxOutgoingEdges<FORWARD_DIRECTION>(facade, heapNode, query_heap, candidates);
+    relaxOutgoingEdges<FORWARD_DIRECTION>(
+        facade, heapNode, query_heap, candidates, calculate_urban);
 }
 
 void backwardRoutingStep(const DataFacade<Algorithm> &facade,
                          const unsigned column_index,
                          typename SearchEngineData<Algorithm>::ManyToManyQueryHeap &query_heap,
                          std::vector<NodeBucket> &search_space_with_buckets,
-                         const PhantomNodeCandidates &candidates)
+                         const PhantomNodeCandidates &candidates,
+                         const bool calculate_urban)
 {
     // Take a copy (no ref &) of the extracted node because otherwise could be modified later if
     // toHeapNode is the same
@@ -270,7 +281,8 @@ void backwardRoutingStep(const DataFacade<Algorithm> &facade,
                                            heapNode.data.distance,
                                            heapNode.data.urban);
 
-    relaxOutgoingEdges<REVERSE_DIRECTION>(facade, heapNode, query_heap, candidates);
+    relaxOutgoingEdges<REVERSE_DIRECTION>(
+        facade, heapNode, query_heap, candidates, calculate_urban);
 }
 
 } // namespace ch
@@ -310,13 +322,17 @@ manyToManySearch(SearchEngineData<ch::Algorithm> &engine_working_data,
         engine_working_data.InitializeOrClearManyToManyThreadLocalStorage(
             facade.GetNumberOfNodes());
         auto &query_heap = *(engine_working_data.many_to_many_heap);
-        ch::insertTargetInHeapWithUrbanSeed(facade, query_heap, target_candidates);
+        ch::insertTargetInHeapWithUrbanSeed(facade, query_heap, target_candidates, calculate_urban);
 
         // Explore search space
         while (!query_heap.Empty())
         {
-            backwardRoutingStep(
-                facade, column_index, query_heap, search_space_with_buckets, target_candidates);
+            backwardRoutingStep(facade,
+                                column_index,
+                                query_heap,
+                                search_space_with_buckets,
+                                target_candidates,
+                                calculate_urban);
         }
     }
 
@@ -333,7 +349,7 @@ manyToManySearch(SearchEngineData<ch::Algorithm> &engine_working_data,
         engine_working_data.InitializeOrClearManyToManyThreadLocalStorage(
             facade.GetNumberOfNodes());
         auto &query_heap = *(engine_working_data.many_to_many_heap);
-        ch::insertSourceInHeapWithUrbanSeed(facade, query_heap, source_candidates);
+        ch::insertSourceInHeapWithUrbanSeed(facade, query_heap, source_candidates, calculate_urban);
 
         // Explore search space
         while (!query_heap.Empty())
@@ -348,7 +364,8 @@ manyToManySearch(SearchEngineData<ch::Algorithm> &engine_working_data,
                                distances_table,
                                urban_table,
                                middle_nodes_table,
-                               source_candidates);
+                               source_candidates,
+                               calculate_urban);
         }
     }
 
