@@ -688,7 +688,9 @@ Represents a route between two waypoints.
   that runs through built-up area, as a value in `[0, 1]` rounded to 3 decimals (weighted by the
   profile's `urban_share_weights`, e.g. suburban roads count at a reduced weight). Absent for
   zero-length legs. Matches the corresponding `urban_shares` cell of a table request over the
-  same coordinates. Flatbuffers responses use `-1` instead of omitting the field.
+  same coordinates. Like `distance` and `duration` it describes the full leg: with `steps=true`
+  the per-segment annotation arrays drop trimmed sub-1m connector segments, but this summary
+  value does not change. Flatbuffers responses use `-1` instead of omitting the field.
 - `annotation`: Additional details about each coordinate along with the route geometry:
 
 | annotations  |                                                                               |

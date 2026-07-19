@@ -32,7 +32,8 @@ inline LegGeometry assembleGeometry(const datafacade::BaseDataFacade &facade,
                                     const PhantomNode &source_node,
                                     const PhantomNode &target_node,
                                     const bool reversed_source,
-                                    const bool reversed_target)
+                                    const bool reversed_target,
+                                    const bool compute_urban_share)
 {
     LegGeometry geometry;
 
@@ -62,7 +63,9 @@ inline LegGeometry assembleGeometry(const datafacade::BaseDataFacade &facade,
 
     geometry.node_ids.push_back(source_geometry[source_segment_start_coordinate]);
 
-    const bool has_urban = facade.HasUrbanRatios();
+    // the per-vertex class lookups are not free — only pay for them when the
+    // request actually asked for the urban_share annotation
+    const bool has_urban = compute_urban_share && facade.HasUrbanRatios();
 
     auto cumulative_distance = 0.;
     auto current_distance = 0.;

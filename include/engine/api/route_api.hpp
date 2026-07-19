@@ -899,7 +899,12 @@ class RouteAPI : public BaseAPI
                         "urban_share",
                         GetAnnotations(leg_geometry,
                                        [](const guidance::LegGeometry::Annotation &anno)
-                                       { return anno.urban_share; }));
+                                       {
+                                           // 3 decimals like the leg summary: the
+                                           // float->double widening of the LUT weight
+                                           // must not leak artifacts like 0.30000001
+                                           return std::round(anno.urban_share * 1000.) / 1000.;
+                                       }));
                 }
                 if (requested_annotations & RouteParameters::AnnotationsType::Weight)
                 {
@@ -1001,12 +1006,23 @@ class RouteAPI : public BaseAPI
                 parameters.overview != RouteParameters::OverviewType::False)
             {
 
-                leg_geometry = guidance::assembleGeometry(BaseAPI::facade,
-                                                          path_data,
-                                                          phantoms.source_phantom,
-                                                          phantoms.target_phantom,
-                                                          reversed_source,
-                                                          reversed_target);
+                leg_geometry = guidance::assembleGeometry(
+                    BaseAPI::facade,
+                    path_data,
+                    phantoms.source_phantom,
+                    phantoms.target_phantom,
+                    reversed_source,
+                    reversed_target,
+                    parameters.annotations_type & RouteParameters::AnnotationsType::UrbanShare);
+
+                // computed before the steps post-processing below: trimShortSegments
+                // erases sub-1m phantom connector segments there, and the leg summary
+                // must keep matching the corresponding /table cell — like leg.distance
+                // and leg.duration, it describes the untrimmed leg
+                if (parameters.annotations_type & RouteParameters::AnnotationsType::UrbanShare)
+                {
+                    leg.urban_share = CalculateLegUrbanShare(leg_geometry);
+                }
 
                 util::Log(logDEBUG) << "Assembling steps " << std::endl;
                 if (parameters.steps)
@@ -1074,11 +1090,6 @@ class RouteAPI : public BaseAPI
                                                                   phantoms.target_phantom);
                     leg_geometry = guidance::resyncGeometry(std::move(leg_geometry), leg.steps);
                 }
-            }
-
-            if (parameters.annotations_type & RouteParameters::AnnotationsType::UrbanShare)
-            {
-                leg.urban_share = CalculateLegUrbanShare(leg_geometry);
             }
 
             leg_geometries.push_back(std::move(leg_geometry));
