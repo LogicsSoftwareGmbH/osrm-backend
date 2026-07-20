@@ -80,6 +80,32 @@ void test_match(bool use_json_only_api)
 BOOST_AUTO_TEST_CASE(test_match_new_api) { test_match(false); }
 BOOST_AUTO_TEST_CASE(test_match_old_api) { test_match(true); }
 
+BOOST_AUTO_TEST_CASE(test_match_urban_share_annotation)
+{
+    using namespace osrm;
+
+    auto osrm = getOSRM(OSRM_TEST_DATA_DIR "/ch/monaco.osrm");
+
+    MatchParameters params;
+    params.annotations_type = RouteParameters::AnnotationsType::UrbanShare;
+    params.coordinates.push_back(get_dummy_location());
+    params.coordinates.push_back(get_dummy_location());
+    params.coordinates.push_back(get_dummy_location());
+
+    json::Object json_result;
+    const auto rc = run_match_json(osrm, params, json_result, true);
+    BOOST_REQUIRE(rc == Status::Ok);
+
+    const auto &matchings = std::get<json::Array>(json_result.values.at("matchings")).values;
+    BOOST_REQUIRE(!matchings.empty());
+    const auto &legs =
+        std::get<json::Array>(std::get<json::Object>(matchings[0]).values.at("legs")).values;
+    BOOST_REQUIRE(!legs.empty());
+    const auto &leg = std::get<json::Object>(legs[0]);
+    const auto &annotation = std::get<json::Object>(leg.values.at("annotation"));
+    BOOST_CHECK(annotation.values.find("urban_share") != annotation.values.end());
+}
+
 void test_match_skip_waypoints(bool use_json_only_api)
 {
     using namespace osrm;

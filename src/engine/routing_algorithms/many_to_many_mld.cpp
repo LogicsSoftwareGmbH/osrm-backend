@@ -629,7 +629,8 @@ manyToManySearch(SearchEngineData<mld::Algorithm> &engine_working_data,
                  const std::vector<PhantomNodeCandidates> &candidates_list,
                  const std::vector<std::size_t> &source_indices,
                  const std::vector<std::size_t> &target_indices,
-                 const bool calculate_distance)
+                 const bool calculate_distance,
+                 std::vector<EdgeDistance> * /*urban_meters_table: unsupported for MLD*/)
 {
     if (source_indices.size() == 1)
     { // TODO: check if target_indices.size() == 1 and do a bi-directional search

@@ -21,7 +21,8 @@ using AnnotationsType = engine::api::TableParameters::AnnotationsType;
 inline const auto annotations_sym = []()
 {
     x3::symbols<AnnotationsType> sym;
-    sym.add("duration", AnnotationsType::Duration)("distance", AnnotationsType::Distance);
+    sym.add("duration", AnnotationsType::Duration)("distance", AnnotationsType::Distance)(
+        "urban_share", AnnotationsType::UrbanShare);
     return sym;
 }();
 

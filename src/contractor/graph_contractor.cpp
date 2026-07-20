@@ -205,7 +205,9 @@ void ContractNode(ContractorThreadData *data,
                                                     node,
                                                     SHORTCUT_ARC,
                                                     FORWARD_DIRECTION_ENABLED,
-                                                    REVERSE_DIRECTION_DISABLED);
+                                                    REVERSE_DIRECTION_DISABLED,
+                                                    in_data.urban_meters +
+                                                        out_data.urban_meters);
 
                         inserted_edges.emplace_back(target,
                                                     source,
@@ -216,7 +218,9 @@ void ContractNode(ContractorThreadData *data,
                                                     node,
                                                     SHORTCUT_ARC,
                                                     FORWARD_DIRECTION_DISABLED,
-                                                    REVERSE_DIRECTION_ENABLED);
+                                                    REVERSE_DIRECTION_ENABLED,
+                                                    in_data.urban_meters +
+                                                        out_data.urban_meters);
                     }
                 }
                 continue;
@@ -282,7 +286,9 @@ void ContractNode(ContractorThreadData *data,
                                                 node,
                                                 SHORTCUT_ARC,
                                                 FORWARD_DIRECTION_ENABLED,
-                                                REVERSE_DIRECTION_DISABLED);
+                                                REVERSE_DIRECTION_DISABLED,
+                                                in_data.urban_meters +
+                                                    out_data.urban_meters);
 
                     inserted_edges.emplace_back(target,
                                                 source,
@@ -293,7 +299,9 @@ void ContractNode(ContractorThreadData *data,
                                                 node,
                                                 SHORTCUT_ARC,
                                                 FORWARD_DIRECTION_DISABLED,
-                                                REVERSE_DIRECTION_ENABLED);
+                                                REVERSE_DIRECTION_ENABLED,
+                                                in_data.urban_meters +
+                                                    out_data.urban_meters);
                 }
             }
         }
@@ -772,7 +780,21 @@ std::vector<bool> contractGraph(ContractorGraph &graph,
     return std::move(node_data.is_core);
 }
 
-using GraphAndFilter = std::tuple<QueryGraph, std::vector<std::vector<bool>>>;
+namespace
+{
+// Splits the urban_meters side-car off the contraction carrier edges; the
+// result is positionally parallel to the QueryGraph edge array built from the
+// same (sorted) edge list.
+std::vector<EdgeDistance> extractUrbanMeters(const std::vector<UrbanQueryEdge> &edges)
+{
+    std::vector<EdgeDistance> urban_meters(edges.size());
+    std::transform(edges.begin(),
+                   edges.end(),
+                   urban_meters.begin(),
+                   [](const auto &edge) { return edge.urban_meters; });
+    return urban_meters;
+}
+} // namespace
 
 GraphAndFilter contractFullGraph(ContractorGraph contractor_graph,
                                  std::vector<EdgeWeight> node_weights)
@@ -780,10 +802,11 @@ GraphAndFilter contractFullGraph(ContractorGraph contractor_graph,
     auto num_nodes = contractor_graph.GetNumberOfNodes();
     contractGraph(contractor_graph, std::move(node_weights));
 
-    auto edges = toEdges<QueryEdge>(std::move(contractor_graph));
+    auto edges = toEdges<UrbanQueryEdge>(std::move(contractor_graph));
     std::vector<bool> edge_filter(edges.size(), true);
 
-    return GraphAndFilter{QueryGraph{num_nodes, edges}, {std::move(edge_filter)}};
+    return GraphAndFilter{
+        QueryGraph{num_nodes, edges}, {std::move(edge_filter)}, extractUrbanMeters(edges)};
 }
 
 GraphAndFilter contractExcludableGraph(ContractorGraph contractor_graph_,
@@ -822,7 +845,7 @@ GraphAndFilter contractExcludableGraph(ContractorGraph contractor_graph_,
 
         // Add all non-core edges to container
         {
-            auto non_core_edges = toEdges<QueryEdge>(contractor_graph);
+            auto non_core_edges = toEdges<UrbanQueryEdge>(contractor_graph);
             auto new_end = std::remove_if(non_core_edges.begin(),
                                           non_core_edges.end(),
                                           [&](const auto &edge) {
@@ -850,11 +873,12 @@ GraphAndFilter contractExcludableGraph(ContractorGraph contractor_graph_,
 
         contractGraph(filtered_core_graph, is_shared_core, is_shared_core, node_weights);
 
-        edge_container.Merge(toEdges<QueryEdge>(std::move(filtered_core_graph)));
+        edge_container.Merge(toEdges<UrbanQueryEdge>(std::move(filtered_core_graph)));
     }
 
     return GraphAndFilter{QueryGraph{num_nodes, edge_container.edges},
-                          edge_container.MakeEdgeFilters()};
+                          edge_container.MakeEdgeFilters(),
+                          extractUrbanMeters(edge_container.edges)};
 }
 
 } // namespace osrm::contractor

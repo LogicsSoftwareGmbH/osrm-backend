@@ -18,6 +18,9 @@ struct RouteLeg
     double weight;
     std::string summary;
     std::vector<RouteStep> steps;
+    // set only when annotations=urban_share was requested and the leg has length:
+    // urban-weighted share of the leg in [0, 1], the /table cell equivalent
+    std::optional<double> urban_share;
 };
 } // namespace osrm::engine::guidance
 

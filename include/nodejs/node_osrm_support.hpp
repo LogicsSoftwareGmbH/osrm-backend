@@ -934,6 +934,11 @@ inline bool parseCommonParameters(const Napi::Object &obj, ParamType &params)
                     params->annotations_type =
                         params->annotations_type | osrm::RouteParameters::AnnotationsType::Speed;
                 }
+                else if (annotations_str == "urban_share")
+                {
+                    params->annotations_type = params->annotations_type |
+                                               osrm::RouteParameters::AnnotationsType::UrbanShare;
+                }
                 else
                 {
                     ThrowError(obj.Env(), "this 'annotations' param is not supported");
@@ -1412,7 +1417,8 @@ inline table_parameters_ptr argumentsToTableParameter(const Napi::CallbackInfo &
         if (!annotations.IsArray())
         {
             ThrowError(args.Env(),
-                       "Annotations must an array containing 'duration' or 'distance', or both");
+                       "Annotations must an array containing 'duration', 'distance' or "
+                       "'urban_share'");
             return table_parameters_ptr();
         }
 
@@ -1432,6 +1438,11 @@ inline table_parameters_ptr argumentsToTableParameter(const Napi::CallbackInfo &
             {
                 params->annotations =
                     params->annotations | osrm::TableParameters::AnnotationsType::Distance;
+            }
+            else if (annotations_str == "urban_share")
+            {
+                params->annotations =
+                    params->annotations | osrm::TableParameters::AnnotationsType::UrbanShare;
             }
             else
             {

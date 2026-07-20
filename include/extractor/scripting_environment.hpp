@@ -10,6 +10,7 @@
 #include <osmium/memory/buffer.hpp>
 
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace osmium
@@ -54,6 +55,7 @@ class ScriptingEnvironment
 
     virtual std::vector<std::vector<std::string>> GetExcludableClasses() = 0;
     virtual std::vector<std::string> GetClassNames() = 0;
+    virtual std::vector<std::pair<std::string, float>> GetUrbanShareWeights() = 0;
     virtual std::vector<std::string> GetNameSuffixList() = 0;
     virtual std::vector<std::string> GetRestrictions() = 0;
     virtual std::vector<std::string> GetRelations() = 0;

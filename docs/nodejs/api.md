@@ -61,7 +61,7 @@ Returns the fastest route between two or more coordinates while visiting the way
     *   `options.alternatives` **[Number][6]** Search for up to this many alternative routes.
         *Please note that even if alternative routes are requested, a result cannot be guaranteed.* (optional, default `0`)
     *   `options.steps` **[Boolean][4]** Return route steps for each route leg. (optional, default `false`)
-    *   `options.annotations` **([Array][5] | [Boolean][4])** An array with strings of `duration`, `nodes`, `distance`, `weight`, `datasources`, `speed` or boolean for enabling/disabling all. (optional, default `false`)
+    *   `options.annotations` **([Array][5] | [Boolean][4])** An array with strings of `duration`, `nodes`, `distance`, `weight`, `datasources`, `speed`, `urban_share` or boolean for enabling/disabling all (the boolean does not include `urban_share`). (optional, default `false`)
     *   `options.geometries` **[String][3]** Returned route geometry format (influences overview and per step). Can also be `geojson`. (optional, default `polyline`)
     *   `options.overview` **[String][3]** Add overview geometry either `full`, `simplified` according to highest zoom level it could be displayed on, or not at all (`false`). If you want the overview for each leg, you can use `by_legs`. (optional, default `simplified`)
     *   `options.continue_straight` **[Boolean][4]?** Forces the route to keep going straight at waypoints and don't do a uturn even if it would be faster. Default value depends on the profile.
@@ -150,7 +150,7 @@ Optionally returns distance table.
     *   `options.fallback_coordinate` **[String][3]?** Either `input` (default) or `snapped`.  If using a `fallback_speed`, use either the user-supplied coordinate (`input`), or the snapped coordinate (`snapped`) for calculating the as-the-crow-flies distance between two points.
     *   `options.scale_factor` **[Number][6]?** Multiply the table duration values in the table by this number for more controlled input into a route optimization solver.
     *   `options.snapping` **[String][3]?** Which edges can be snapped to, either `default`, or `any`.  `default` only snaps to edges marked by the profile as `is_startpoint`, `any` will allow snapping to any edge in the routing graph.
-    *   `options.annotations` **[Array][5]?** Return the requested table or tables in response. Can be `['duration']` (return the duration matrix, default), `[distance']` (return the distance matrix), or `['duration', distance']` (return both the duration matrix and the distance matrix).
+    *   `options.annotations` **[Array][5]?** Return the requested table or tables in response. Any combination of `duration` (return the duration matrix, default), `distance` (return the distance matrix) and `urban_share` (return the urban share matrix; requires contraction hierarchies and a dataset preprocessed with a profile that declares `urban_share_weights`).
 *   `callback` **[Function][8]**&#x20;
 
 #### Examples
@@ -177,6 +177,7 @@ Returns **[Object][2]** containing `durations`, `distances`, `sources`, and `des
 Values are given in seconds.
 **`distances`**: array of arrays that stores the matrix in row-major order. `distances[i][j]` gives the travel time from the i-th waypoint to the j-th waypoint.
 Values are given in meters.
+**`urban_shares`**: array of arrays that stores the matrix in row-major order. `urban_shares[i][j]` gives the share of the fastest path from the i-th waypoint to the j-th waypoint that runs through built-up area, in `[0, 1]`. `null` for unreachable pairs, `fallback_speed` estimates and degenerate pairs (e.g. the diagonal).
 **`sources`**: array of [`Ẁaypoint`][9] objects describing all sources in order.
 **`destinations`**: array of [`Ẁaypoint`][9] objects describing all destinations in order.
 **`fallback_speed_cells`**: (optional) if `fallback_speed` is used, will be an array of arrays of `row,column` values, indicating which cells contain estimated values.
@@ -227,7 +228,7 @@ if they can not be matched successfully.
     *   `options.hints` **[Array][5]?** Hints for the coordinate snapping. Array of base64 encoded strings.
     *   `options.generate_hints` **[Boolean][4]** Whether or not adds a Hint to the response which can be used in subsequent requests. (optional, default `true`)
     *   `options.steps` **[Boolean][4]** Return route steps for each route. (optional, default `false`)
-    *   `options.annotations` **([Array][5] | [Boolean][4])** An array with strings of `duration`, `nodes`, `distance`, `weight`, `datasources`, `speed` or boolean for enabling/disabling all. (optional, default `false`)
+    *   `options.annotations` **([Array][5] | [Boolean][4])** An array with strings of `duration`, `nodes`, `distance`, `weight`, `datasources`, `speed`, `urban_share` or boolean for enabling/disabling all (the boolean does not include `urban_share`). (optional, default `false`)
     *   `options.geometries` **[String][3]** Returned route geometry format (influences overview and per step). Can also be `geojson`. (optional, default `polyline`)
     *   `options.overview` **[String][3]** Add overview geometry either `full`, `simplified` according to highest zoom level it could be display on, or not at all (`false`). (optional, default `simplified`)
     *   `options.timestamps` **[Array][5]<[Number][6]>?** Timestamp of the input location (integers, UNIX-like timestamp).
@@ -298,7 +299,7 @@ Right now, the following combinations are possible:
     *   `options.hints` **[Array][5]?** Hints for the coordinate snapping. Array of base64 encoded strings.
     *   `options.generate_hints` **[Boolean][4]** Whether or not adds a Hint to the response which can be used in subsequent requests. (optional, default `true`)
     *   `options.steps` **[Boolean][4]** Return route steps for each route. (optional, default `false`)
-    *   `options.annotations` **([Array][5] | [Boolean][4])** An array with strings of `duration`, `nodes`, `distance`, `weight`, `datasources`, `speed` or boolean for enabling/disabling all. (optional, default `false`)
+    *   `options.annotations` **([Array][5] | [Boolean][4])** An array with strings of `duration`, `nodes`, `distance`, `weight`, `datasources`, `speed`, `urban_share` or boolean for enabling/disabling all (the boolean does not include `urban_share`). (optional, default `false`)
     *   `options.geometries` **[String][3]** Returned route geometry format (influences overview and per step). Can also be `geojson`. (optional, default `polyline`)
     *   `options.overview` **[String][3]** Add overview geometry either `full`, `simplified`, `false` or `by_legs`. (optional, default `simplified`)
     *   `options.roundtrip` **[Boolean][4]** Return route is a roundtrip. (optional, default `true`)

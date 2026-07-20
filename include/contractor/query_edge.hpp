@@ -75,6 +75,26 @@ struct QueryEdge
                 data.distance == right.data.distance);
     }
 };
+
+// Carrier used during contraction so the urban_meters side-car (see
+// extractor/urban_classes.hpp) rides through edge conversion, merging and
+// sorting in lockstep with the on-disk QueryEdge, which stays unchanged for
+// data compatibility with stock OSRM. The final edge order is positionally
+// identical to the serialized edge array, so the urban values can be split
+// off into a parallel vector right before serialization.
+struct UrbanQueryEdge : QueryEdge
+{
+    using QueryEdge::QueryEdge;
+
+    UrbanQueryEdge() = default;
+
+    UrbanQueryEdge(NodeID source, NodeID target, const EdgeData &data, EdgeDistance urban_meters)
+        : QueryEdge(source, target, data), urban_meters(urban_meters)
+    {
+    }
+
+    EdgeDistance urban_meters{0};
+};
 } // namespace osrm::contractor
 
 #endif // QUERYEDGE_HPP

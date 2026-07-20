@@ -283,7 +283,7 @@ inline void asyncForTiles(const Napi::CallbackInfo &info,
  * @param {Number} [options.alternatives=0] Search for up to this many alternative routes.
  * *Please note that even if alternative routes are requested, a result cannot be guaranteed.*
  * @param {Boolean} [options.steps=false] Return route steps for each route leg.
- * @param {Array|Boolean} [options.annotations=false] An array with strings of `duration`, `nodes`, `distance`, `weight`, `datasources`, `speed` or boolean for enabling/disabling all.
+ * @param {Array|Boolean} [options.annotations=false] An array with strings of `duration`, `nodes`, `distance`, `weight`, `datasources`, `speed`, `urban_share` or boolean for enabling/disabling all (the boolean does not include `urban_share`).
  * @param {String} [options.geometries=polyline] Returned route geometry format (influences overview and per step). Can also be `geojson`.
  * @param {String} [options.overview=simplified] Add overview geometry either `full`, `simplified` according to highest zoom level it could be displayed on, or not at all (`false`). If you want the overview for each leg, you can use `by_legs`.
  * @param {Boolean} [options.continue_straight] Forces the route to keep going straight at waypoints and don't do a uturn even if it would be faster. Default value depends on the profile.
@@ -384,7 +384,7 @@ Napi::Value Engine::nearest(const Napi::CallbackInfo &info)
  * @param {String} [options.fallback_coordinate] Either `input` (default) or `snapped`.  If using a `fallback_speed`, use either the user-supplied coordinate (`input`), or the snapped coordinate (`snapped`) for calculating the as-the-crow-flies distance between two points.
  * @param {Number} [options.scale_factor] Multiply the table duration values in the table by this number for more controlled input into a route optimization solver.
  * @param {String} [options.snapping] Which edges can be snapped to, either `default`, or `any`.  `default` only snaps to edges marked by the profile as `is_startpoint`, `any` will allow snapping to any edge in the routing graph.
- * @param {Array} [options.annotations] Return the requested table or tables in response. Can be `['duration']` (return the duration matrix, default), `[distance']` (return the distance matrix), or `['duration', distance']` (return both the duration matrix and the distance matrix).
+ * @param {Array} [options.annotations] Return the requested table or tables in response. Any combination of `duration` (return the duration matrix, default), `distance` (return the distance matrix) and `urban_share` (return the urban share matrix; requires contraction hierarchies and a dataset preprocessed with a profile that declares `urban_share_weights`).
  * @param {Function} callback
  *
  * @returns {Object} containing `durations`, `distances`, `sources`, and `destinations`.
@@ -392,6 +392,7 @@ Napi::Value Engine::nearest(const Napi::CallbackInfo &info)
  *                  Values are given in seconds.
  * **`distances`**: array of arrays that stores the matrix in row-major order. `distances[i][j]` gives the travel time from the i-th waypoint to the j-th waypoint.
  *                  Values are given in meters.
+ * **`urban_shares`**: array of arrays that stores the matrix in row-major order. `urban_shares[i][j]` gives the share of the fastest path from the i-th waypoint to the j-th waypoint that runs through built-up area, in `[0, 1]`. `null` for unreachable pairs, `fallback_speed` estimates and degenerate pairs (e.g. the diagonal).
  * **`sources`**: array of [`Ẁaypoint`](#waypoint) objects describing all sources in order.
  * **`destinations`**: array of [`Ẁaypoint`](#waypoint) objects describing all destinations in order.
  * **`fallback_speed_cells`**: (optional) if `fallback_speed` is used, will be an array of arrays of `row,column` values, indicating which cells contain estimated values.
@@ -474,7 +475,7 @@ Napi::Value Engine::tile(const Napi::CallbackInfo &info)
  * @param {Array} [options.hints] Hints for the coordinate snapping. Array of base64 encoded strings.
  * @param {Boolean} [options.generate_hints=true] Whether or not adds a Hint to the response which can be used in subsequent requests.
  * @param {Boolean} [options.steps=false] Return route steps for each route.
- * @param {Array|Boolean} [options.annotations=false] An array with strings of `duration`, `nodes`, `distance`, `weight`, `datasources`, `speed` or boolean for enabling/disabling all.
+ * @param {Array|Boolean} [options.annotations=false] An array with strings of `duration`, `nodes`, `distance`, `weight`, `datasources`, `speed`, `urban_share` or boolean for enabling/disabling all (the boolean does not include `urban_share`).
  * @param {String} [options.geometries=polyline] Returned route geometry format (influences overview and per step). Can also be `geojson`.
  * @param {String} [options.overview=simplified] Add overview geometry either `full`, `simplified` according to highest zoom level it could be display on, or not at all (`false`).
  * @param {Array<Number>} [options.timestamps] Timestamp of the input location (integers, UNIX-like timestamp).
@@ -553,7 +554,7 @@ Napi::Value Engine::match(const Napi::CallbackInfo &info)
  * @param {Array} [options.hints] Hints for the coordinate snapping. Array of base64 encoded strings.
  * @param {Boolean} [options.generate_hints=true] Whether or not adds a Hint to the response which can be used in subsequent requests.
  * @param {Boolean} [options.steps=false] Return route steps for each route.
- * @param {Array|Boolean} [options.annotations=false] An array with strings of `duration`, `nodes`, `distance`, `weight`, `datasources`, `speed` or boolean for enabling/disabling all.
+ * @param {Array|Boolean} [options.annotations=false] An array with strings of `duration`, `nodes`, `distance`, `weight`, `datasources`, `speed`, `urban_share` or boolean for enabling/disabling all (the boolean does not include `urban_share`).
  * @param {String} [options.geometries=polyline] Returned route geometry format (influences overview and per step). Can also be `geojson`.
  * @param {String} [options.overview=simplified] Add overview geometry either `full`, `simplified`, `false` or `by_legs`.
  * @param {Function} callback

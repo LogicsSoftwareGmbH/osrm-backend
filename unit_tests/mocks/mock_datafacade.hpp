@@ -143,6 +143,9 @@ class MockBaseDataFacade : public engine::datafacade::BaseDataFacade
 
     extractor::ClassData GetClassData(const NodeID /*id*/) const override final { return 0; }
 
+    bool HasUrbanRatios() const override { return false; }
+    float GetUrbanRatio(const extractor::ClassData /* classes */) const override { return 0.f; }
+
     std::vector<std::string> GetClasses(const extractor::ClassData /*data*/) const override final
     {
         return {};
@@ -230,6 +233,8 @@ class MockAlgorithmDataFacade<engine::datafacade::CH>
     {
         return EdgeRange(static_cast<EdgeID>(0), static_cast<EdgeID>(0), {});
     }
+    bool HasUrbanData() const override { return false; }
+    EdgeDistance GetUrbanMeters(const EdgeID /* e */) const override { return EdgeDistance{0}; }
     EdgeID FindEdge(const NodeID /* from */, const NodeID /* to */) const override
     {
         return SPECIAL_EDGEID;

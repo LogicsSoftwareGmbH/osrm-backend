@@ -90,6 +90,9 @@ BOOST_AUTO_TEST_CASE(invalid_route_urls)
                       7);
     BOOST_CHECK_EQUAL(testInvalidOptions<RouteParameters>(std::string{"1,2;3,"} + '\0'), 6);
     BOOST_CHECK_EQUAL(testInvalidOptions<RouteParameters>("1,2;3,4?annotations=distances"), 28UL);
+    // "urban_share" parses, the stray trailing 's' does not
+    BOOST_CHECK_EQUAL(testInvalidOptions<RouteParameters>("1,2;3,4?annotations=urban_shares"),
+                      31UL);
     BOOST_CHECK_EQUAL(testInvalidOptions<RouteParameters>("1,2;3,4?annotations="), 20UL);
     BOOST_CHECK_EQUAL(testInvalidOptions<RouteParameters>("1,2;3,4?annotations=true,false"), 24UL);
     BOOST_CHECK_EQUAL(
@@ -107,6 +110,10 @@ BOOST_AUTO_TEST_CASE(invalid_table_urls)
     BOOST_CHECK_EQUAL(
         testInvalidOptions<TableParameters>("1,2;3,4?sources=all&destinations=all&annotations=bla"),
         49UL);
+    BOOST_CHECK_EQUAL(testInvalidOptions<TableParameters>("1,2;3,4?annotations=urban"), 20UL);
+    // "urban_share" parses, the stray trailing 's' does not
+    BOOST_CHECK_EQUAL(testInvalidOptions<TableParameters>("1,2;3,4?annotations=urban_shares"),
+                      31UL);
     BOOST_CHECK_EQUAL(testInvalidOptions<TableParameters>("1,2;3,4?fallback_coordinate=asdf"),
                       28UL);
     BOOST_CHECK_EQUAL(testInvalidOptions<TableParameters>("1,2;3,4?fallback_coordinate=10"), 28UL);
@@ -451,6 +458,29 @@ BOOST_AUTO_TEST_CASE(valid_route_urls)
     BOOST_CHECK_EQUAL(result_2->annotations_type == RouteParameters::AnnotationsType::All, true);
     BOOST_CHECK_EQUAL(result_17->annotations, true);
 
+    // urban_share parses alone and in combination; All deliberately excludes it
+    RouteParameters reference_urban{};
+    reference_urban.annotations_type = RouteParameters::AnnotationsType::UrbanShare;
+    reference_urban.coordinates = coords_1;
+    auto result_urban = parseParameters<RouteParameters>("1,2;3,4?annotations=urban_share");
+    BOOST_CHECK(result_urban);
+    BOOST_CHECK_EQUAL(result_urban->annotations_type ==
+                          RouteParameters::AnnotationsType::UrbanShare,
+                      true);
+    BOOST_CHECK_EQUAL(result_urban->annotations, true);
+    BOOST_CHECK_EQUAL(static_cast<bool>(RouteParameters::AnnotationsType::All &
+                                        RouteParameters::AnnotationsType::UrbanShare),
+                      false);
+
+    auto result_urban_combined =
+        parseParameters<RouteParameters>("1,2;3,4?annotations=duration,urban_share");
+    BOOST_CHECK(result_urban_combined);
+    BOOST_CHECK_EQUAL(result_urban_combined->annotations_type ==
+                          (RouteParameters::AnnotationsType::Duration |
+                           RouteParameters::AnnotationsType::UrbanShare),
+                      true);
+    BOOST_CHECK_EQUAL(result_urban_combined->annotations, true);
+
     std::vector<std::optional<engine::Approach>> approaches_18 = {
         std::nullopt,
         engine::Approach::CURB,
@@ -626,6 +656,28 @@ BOOST_AUTO_TEST_CASE(valid_table_urls)
     BOOST_CHECK_EQUAL(result_8->annotations & TableParameters::AnnotationsType::Distance, true);
     CHECK_EQUAL_RANGE(reference_8.sources, result_8->sources);
     CHECK_EQUAL_RANGE(reference_8.destinations, result_8->destinations);
+
+    auto result_urban = parseParameters<TableParameters>("1,2;3,4?annotations=urban_share");
+    BOOST_CHECK(result_urban);
+    BOOST_CHECK_EQUAL(result_urban->annotations & TableParameters::AnnotationsType::UrbanShare,
+                      true);
+    BOOST_CHECK_EQUAL(result_urban->annotations & TableParameters::AnnotationsType::Duration,
+                      false);
+    BOOST_CHECK_EQUAL(result_urban->annotations & TableParameters::AnnotationsType::Distance,
+                      false);
+
+    auto result_urban_combined =
+        parseParameters<TableParameters>("1,2;3,4?annotations=duration,urban_share");
+    BOOST_CHECK(result_urban_combined);
+    BOOST_CHECK_EQUAL(result_urban_combined->annotations &
+                          TableParameters::AnnotationsType::Duration,
+                      true);
+    BOOST_CHECK_EQUAL(result_urban_combined->annotations &
+                          TableParameters::AnnotationsType::UrbanShare,
+                      true);
+    BOOST_CHECK_EQUAL(result_urban_combined->annotations &
+                          TableParameters::AnnotationsType::Distance,
+                      false);
 
     TableParameters reference_9{};
     reference_9.coordinates = coords_1;

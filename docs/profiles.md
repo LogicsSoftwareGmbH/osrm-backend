@@ -126,6 +126,17 @@ classes                              | Sequence         | Determines the allowed
 restrictions                         | Sequence         | Determines which turn restrictions will be used for this profile.
 suffix_list                          | Set              | List of name suffixes needed for determining if "Highway 101 NW" the same road as "Highway 101 ES".
 relation_types                       | Sequence         | Determines which relations should be cached for processing in this profile. It contains relations types
+urban_share_weights                  | Table            | Opt-in for the `urban_share` table annotation: maps class names (which must be declared in `classes`) to weights in `[0, 1]`, e.g. `{ urban = 1.0, suburban = 0.5 }`. A way's weight is the maximum over its set classes (default `0` = rural). `osrm-contract` derives per-edge urban meters from these weights into an optional side-car file; without the table the datasets are byte-identical to ones produced without this feature and `urban_share` requests return `NoUrbanData`. Contraction hierarchies only.
+
+How ways get tagged with such classes is entirely up to the profile. The bundled
+`lib/urban_classifier.lua` implements a tiered OSM-tag heuristic (maxspeed zone keys, highway
+class, maxspeed value, street lighting) that sets `urban`/`suburban` classes; all tuning lives
+in that single file. `car.lua` uses it together with the `urban_share_weights` shown above.
+Note the semantic commitment the bundled classifier makes: motorways and trunks (including
+their links) always count as rural — even inside city limits and even against explicit urban
+zone tags — so the resulting share measures *surface-street* urbanity as a congestion proxy,
+not whether the path is geographically inside a built-up area. Grade-separated urban
+motorways deliberately do not inflate it.
 
 ### process_node(profile, node, result, relations)
 Process an OSM node to determine whether this node is an obstacle, if it can be passed at all and whether passing it incurs a delay.

@@ -27,9 +27,12 @@
 #include "util/integer_range.hpp"
 #include "util/json_util.hpp"
 
+#include <algorithm>
 #include <bitset>
+#include <cmath>
 #include <iterator>
 #include <map>
+#include <optional>
 #include <vector>
 
 namespace osrm::engine::api
@@ -232,6 +235,28 @@ class RouteAPI : public BaseAPI
         return fb_result.CreateVector(annotations_store);
     }
 
+    // leg-level urban share, defined exactly like a /table cell:
+    // Σ segment_ratio·segment_meters / Σ segment_meters, rounded to 3 decimals;
+    // unset for zero-length legs (the /table diagonal returns null likewise)
+    static std::optional<double> CalculateLegUrbanShare(const guidance::LegGeometry &leg_geometry)
+    {
+        double total_distance = 0.;
+        double urban_distance = 0.;
+        for (const auto &annotation : leg_geometry.annotations)
+        {
+            total_distance += annotation.distance;
+            urban_distance += annotation.urban_share * annotation.distance;
+        }
+        if (total_distance <= 0. || !std::isfinite(urban_distance))
+        {
+            // non-finite only through corrupted side-car floats — treat as
+            // unavailable rather than leaking NaN into the response
+            return std::nullopt;
+        }
+        const auto share = std::clamp(urban_distance / total_distance, 0., 1.);
+        return std::round(share * 1000.) / 1000.;
+    }
+
     template <typename GetFn>
     util::json::Array GetAnnotations(const guidance::LegGeometry &leg, GetFn Get) const
     {
@@ -413,6 +438,10 @@ class RouteAPI : public BaseAPI
             legBuilder.add_distance(leg.distance);
             legBuilder.add_duration(leg.duration);
             legBuilder.add_weight(leg.weight);
+            if (leg.urban_share)
+            {
+                legBuilder.add_urban_share(*leg.urban_share);
+            }
             if (!leg.summary.empty())
             {
                 legBuilder.add_summary(summary_string);
@@ -505,6 +534,20 @@ class RouteAPI : public BaseAPI
                                                 { return anno.distance; });
         }
 
+        flatbuffers::Offset<flatbuffers::Vector<float>> urban_share;
+        if (requested_annotations & RouteParameters::AnnotationsType::UrbanShare)
+        {
+            urban_share = GetAnnotations<float>(
+                fb_result,
+                leg_geometry,
+                [](const guidance::LegGeometry::Annotation &anno)
+                {
+                    // 3 decimals like the JSON path, so the same request yields
+                    // the same values in both formats
+                    return static_cast<float>(std::round(anno.urban_share * 1000.) / 1000.);
+                });
+        }
+
         flatbuffers::Offset<flatbuffers::Vector<uint32_t>> weight;
         if (requested_annotations & RouteParameters::AnnotationsType::Weight)
         {
@@ -554,6 +597,7 @@ class RouteAPI : public BaseAPI
         annotation.add_speed(speed);
         annotation.add_duration(duration);
         annotation.add_distance(distance);
+        annotation.add_urban_share(urban_share);
         annotation.add_weight(weight);
         annotation.add_datasources(datasources);
         annotation.add_nodes(nodes_vector);
@@ -856,6 +900,19 @@ class RouteAPI : public BaseAPI
                                        [](const guidance::LegGeometry::Annotation &anno)
                                        { return anno.distance; }));
                 }
+                if (requested_annotations & RouteParameters::AnnotationsType::UrbanShare)
+                {
+                    annotation.values.emplace(
+                        "urban_share",
+                        GetAnnotations(leg_geometry,
+                                       [](const guidance::LegGeometry::Annotation &anno)
+                                       {
+                                           // 3 decimals like the leg summary: the
+                                           // float->double widening of the LUT weight
+                                           // must not leak artifacts like 0.30000001
+                                           return std::round(anno.urban_share * 1000.) / 1000.;
+                                       }));
+                }
                 if (requested_annotations & RouteParameters::AnnotationsType::Weight)
                 {
                     annotation.values.emplace(
@@ -956,12 +1013,23 @@ class RouteAPI : public BaseAPI
                 parameters.overview != RouteParameters::OverviewType::False)
             {
 
-                leg_geometry = guidance::assembleGeometry(BaseAPI::facade,
-                                                          path_data,
-                                                          phantoms.source_phantom,
-                                                          phantoms.target_phantom,
-                                                          reversed_source,
-                                                          reversed_target);
+                leg_geometry = guidance::assembleGeometry(
+                    BaseAPI::facade,
+                    path_data,
+                    phantoms.source_phantom,
+                    phantoms.target_phantom,
+                    reversed_source,
+                    reversed_target,
+                    parameters.annotations_type & RouteParameters::AnnotationsType::UrbanShare);
+
+                // computed before the steps post-processing below: trimShortSegments
+                // erases sub-1m phantom connector segments there, and the leg summary
+                // must keep matching the corresponding /table cell — like leg.distance
+                // and leg.duration, it describes the untrimmed leg
+                if (parameters.annotations_type & RouteParameters::AnnotationsType::UrbanShare)
+                {
+                    leg.urban_share = CalculateLegUrbanShare(leg_geometry);
+                }
 
                 util::Log(logDEBUG) << "Assembling steps " << std::endl;
                 if (parameters.steps)

@@ -4,6 +4,7 @@
 #include "storage/shared_datatype.hpp"
 #include "storage/shared_memory.hpp"
 #include "storage/shared_monitor.hpp"
+#include "storage/urban_validation.hpp"
 #include "storage/view_factory.hpp"
 
 #include "contractor/files.hpp"
@@ -24,6 +25,7 @@
 #include <chrono>
 #include <thread>
 
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -335,6 +337,26 @@ std::vector<std::pair<bool, std::filesystem::path>> Storage::GetUpdatableFiles()
         {IS_REQUIRED, config.GetPath(".osrm.turn_weight_penalties")},
         {IS_REQUIRED, config.GetPath(".osrm.turn_duration_penalties")}};
 
+    // the urban side-cars participate only when they provably belong to the
+    // preprocessing products next to them (see storage/urban_validation.hpp).
+    // .osrm.urban_config comes after .osrm.urban so that the extract-side
+    // class-weight LUT wins over the copy embedded in .osrm.urban — the mmap
+    // loader resolves the duplicate block name by last-file-wins, matching the
+    // copy order in PopulateUpdatableData
+    const auto config_identity = urbanConfigIdentityIfValid(config.GetPath(".osrm.urban_config"),
+                                                            config.GetPath(".osrm.properties"));
+    if (urbanSideCarMatchesGraph(config.GetPath(".osrm.urban"),
+                                 config.GetPath(".osrm.hsgr"),
+                                 config.GetPath(".osrm.properties"),
+                                 config_identity))
+    {
+        files.emplace_back(IS_OPTIONAL, config.GetPath(".osrm.urban"));
+    }
+    if (config_identity)
+    {
+        files.emplace_back(IS_OPTIONAL, config.GetPath(".osrm.urban_config"));
+    }
+
     for (const auto &file : files)
     {
         if (file.first == IS_REQUIRED && !std::filesystem::exists(file.second))
@@ -567,6 +589,43 @@ void Storage::PopulateUpdatableData(const SharedDataIndex &index)
                     " in " + config.GetPath(".osrm.edges").string());
             }
         }
+    }
+
+    // same predicates as GetUpdatableFiles: stale side-cars never made it into
+    // the layout, so they must not be read here either
+    const auto urban_config_identity = urbanConfigIdentityIfValid(
+        config.GetPath(".osrm.urban_config"), config.GetPath(".osrm.properties"));
+    if (urbanSideCarMatchesGraph(config.GetPath(".osrm.urban"),
+                                 config.GetPath(".osrm.hsgr"),
+                                 config.GetPath(".osrm.properties"),
+                                 urban_config_identity))
+    {
+        auto urban_meters =
+            make_vector_view<EdgeDistance>(index, "/ch/metrics/" + metric_name + "/urban_meters");
+        auto urban_class_weights = make_vector_view<float>(index, "/common/urban_class_weights");
+        std::uint32_t urban_connectivity_checksum = 0;
+        std::uint32_t urban_config_identity_copy = 0;
+        contractor::files::readUrbanData(config.GetPath(".osrm.urban"),
+                                         metric_name,
+                                         urban_meters,
+                                         urban_class_weights,
+                                         urban_connectivity_checksum,
+                                         urban_config_identity_copy);
+    }
+
+    // the class-weight LUT block is carried by both urban side-car files; the
+    // extract-side config is read second so its values win over the copy embedded
+    // in .osrm.urban, and it makes the LUT available on datasets that never ran
+    // osrm-contract (MLD)
+    if (urban_config_identity)
+    {
+        extractor::UrbanClassWeights urban_config_weights;
+        std::uint32_t config_identity_copy = 0;
+        extractor::files::readUrbanConfig(
+            config.GetPath(".osrm.urban_config"), urban_config_weights, config_identity_copy);
+        auto urban_class_weights = make_vector_view<float>(index, "/common/urban_class_weights");
+        std::copy(
+            urban_config_weights.begin(), urban_config_weights.end(), urban_class_weights.begin());
     }
 
     if (std::filesystem::exists(config.GetPath(".osrm.cell_metrics")))

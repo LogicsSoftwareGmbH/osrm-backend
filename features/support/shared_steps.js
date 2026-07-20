@@ -211,6 +211,7 @@ export default class SharedSteps {
                 'nodes',
                 'weight',
                 'speed',
+                'urban_share',
               ];
               const metadata_whitelist = ['datasource_names'];
               if (k.match(/^a:/)) {

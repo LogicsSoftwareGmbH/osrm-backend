@@ -22,6 +22,7 @@ struct NodeBucket
     EdgeWeight weight;
     EdgeDuration duration;
     EdgeDistance distance;
+    EdgeDistance urban;
 
     NodeBucket(NodeID middle_node,
                NodeID parent_node,
@@ -29,9 +30,11 @@ struct NodeBucket
                unsigned column_index,
                EdgeWeight weight,
                EdgeDuration duration,
-               EdgeDistance distance)
+               EdgeDistance distance,
+               EdgeDistance urban = {0})
         : middle_node(middle_node), parent_node(parent_node), column_index(column_index),
-          from_clique_arc(from_clique_arc), weight(weight), duration(duration), distance(distance)
+          from_clique_arc(from_clique_arc), weight(weight), duration(duration), distance(distance),
+          urban(urban)
     {
     }
 
@@ -40,9 +43,11 @@ struct NodeBucket
                unsigned column_index,
                EdgeWeight weight,
                EdgeDuration duration,
-               EdgeDistance distance)
+               EdgeDistance distance,
+               EdgeDistance urban = {0})
         : middle_node(middle_node), parent_node(parent_node), column_index(column_index),
-          from_clique_arc(false), weight(weight), duration(duration), distance(distance)
+          from_clique_arc(false), weight(weight), duration(duration), distance(distance),
+          urban(urban)
     {
     }
 
@@ -86,6 +91,9 @@ struct NodeBucket
 };
 } // namespace
 
+// When urban_meters_table is non-null and the dataset carries urban data
+// (facade.HasUrbanData()), it receives the accumulated urban_meters per matrix
+// cell (MAXIMAL_EDGE_DISTANCE where no route was found); only CH fills it.
 template <typename Algorithm>
 std::pair<std::vector<EdgeDuration>, std::vector<EdgeDistance>>
 manyToManySearch(SearchEngineData<Algorithm> &engine_working_data,
@@ -93,7 +101,8 @@ manyToManySearch(SearchEngineData<Algorithm> &engine_working_data,
                  const std::vector<PhantomNodeCandidates> &candidates_list,
                  const std::vector<std::size_t> &source_indices,
                  const std::vector<std::size_t> &target_indices,
-                 const bool calculate_distance);
+                 const bool calculate_distance,
+                 std::vector<EdgeDistance> *urban_meters_table);
 
 } // namespace osrm::engine::routing_algorithms
 

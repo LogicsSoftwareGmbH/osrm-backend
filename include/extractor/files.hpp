@@ -8,6 +8,7 @@
 #include "extractor/query_node.hpp"
 #include "extractor/serialization.hpp"
 #include "extractor/turn_lane_types.hpp"
+#include "extractor/urban_classes.hpp"
 
 #include "util/coordinate.hpp"
 #include "util/guidance/bearing_class.hpp"
@@ -59,6 +60,44 @@ inline void readProfileProperties(const std::filesystem::path &path, ProfileProp
     storage::tar::FileReader reader{path, fingerprint};
 
     serialization::read(reader, "/common/properties", properties);
+}
+
+// reads .osrm.urban_config
+inline void readUrbanConfig(const std::filesystem::path &path,
+                            UrbanClassWeights &weights,
+                            std::uint32_t &config_identity)
+{
+    const auto fingerprint = storage::tar::FileReader::VerifyFingerprint;
+    storage::tar::FileReader reader{path, fingerprint};
+
+    reader.ReadInto("/common/urban_config_identity", config_identity);
+
+    std::vector<float> data;
+    storage::serialization::read(reader, "/common/urban_class_weights", data);
+    if (data.size() != weights.size())
+    {
+        throw util::exception("Unexpected urban_class_weights size in " + path.string());
+    }
+    std::copy(data.begin(), data.end(), weights.begin());
+}
+
+// writes .osrm.urban_config: the bit-indexed class-weight LUT plus the identity
+// of the class-name -> bit mapping it was resolved under (see
+// computeUrbanConfigIdentity) — load rejects the file when the identity stops
+// matching the .osrm.properties next to it, e.g. after a re-extract by a
+// profile or tool that knows nothing about the side-car
+inline void writeUrbanConfig(const std::filesystem::path &path,
+                             const UrbanClassWeights &weights,
+                             const std::uint32_t config_identity)
+{
+    const auto fingerprint = storage::tar::FileWriter::GenerateFingerprint;
+    storage::tar::FileWriter writer{path, fingerprint};
+
+    writer.WriteElementCount64("/common/urban_config_identity", 1);
+    writer.WriteFrom("/common/urban_config_identity", config_identity);
+
+    const std::vector<float> data(weights.begin(), weights.end());
+    storage::serialization::write(writer, "/common/urban_class_weights", data);
 }
 
 // writes .osrm.properties

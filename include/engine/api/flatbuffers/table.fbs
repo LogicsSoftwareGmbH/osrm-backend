@@ -8,4 +8,10 @@ table TableResult {
     distances: [float];
     destinations: [Waypoint];
     fallback_speed_cells: [uint];
+    // Share of each fastest path through urban-classified roads, [0, 1].
+    // -1 marks cells with no share (unreachable, fallback_speed estimate, or
+    // degenerate distance <= 0 such as the diagonal); 0 is a legitimate
+    // all-rural share. Only present for annotations=urban_share on datasets
+    // preprocessed with urban class weights.
+    urban_shares: [float];
 }

@@ -16,20 +16,23 @@ inline bool addLoopWeight(const DataFacade<ch::Algorithm> &facade,
                           const NodeID node,
                           EdgeWeight &weight,
                           EdgeDuration &duration,
-                          EdgeDistance &distance)
+                          EdgeDistance &distance,
+                          EdgeDistance &urban,
+                          const bool calculate_urban)
 { // Special case for CH when contractor creates a loop edge node->node
     BOOST_ASSERT(weight < EdgeWeight{0});
 
-    const auto loop_weight = ch::getLoopMetric<EdgeWeight>(facade, node);
+    const auto loop_weight = ch::getLoopMetric<EdgeWeight>(facade, node, calculate_urban);
     if (std::get<0>(loop_weight) != INVALID_EDGE_WEIGHT)
     {
         const auto new_weight_with_loop = weight + std::get<0>(loop_weight);
         if (new_weight_with_loop >= EdgeWeight{0})
         {
             weight = new_weight_with_loop;
-            auto result = ch::getLoopMetric<EdgeDuration>(facade, node);
+            auto result = ch::getLoopMetric<EdgeDuration>(facade, node, calculate_urban);
             duration += std::get<0>(result);
             distance += std::get<1>(result);
+            urban += std::get<2>(result);
             return true;
         }
     }
@@ -38,12 +41,101 @@ inline bool addLoopWeight(const DataFacade<ch::Algorithm> &facade,
     return false;
 }
 
+// Variants of insertSourceInHeap/insertTargetInHeap (routing_base.hpp) that
+// additionally seed the phantom's urban_meters fraction. Exact, not an
+// approximation: a phantom sits on a single edge-based node whose classes are
+// uniform along the segment, so its urban share is ratio * distance fraction.
+template <typename ManyToManyQueryHeap>
+void insertSourceInHeapWithUrbanSeed(const DataFacade<Algorithm> &facade,
+                                     ManyToManyQueryHeap &heap,
+                                     const PhantomNodeCandidates &source_candidates,
+                                     const bool calculate_urban)
+{
+    const bool has_urban = calculate_urban && facade.HasUrbanRatios();
+    const auto urban_seed = [&](const SegmentID &segment, const EdgeDistance distance)
+    {
+        if (!has_urban)
+        {
+            return EdgeDistance{0};
+        }
+        const auto ratio = facade.GetUrbanRatio(facade.GetClassData(segment.id));
+        return to_alias<EdgeDistance>(ratio * from_alias<float>(distance));
+    };
+
+    for (const auto &phantom_node : source_candidates)
+    {
+        if (phantom_node.IsValidForwardSource())
+        {
+            heap.Insert(phantom_node.forward_segment_id.id,
+                        EdgeWeight{0} - phantom_node.GetForwardWeightPlusOffset(),
+                        {phantom_node.forward_segment_id.id,
+                         EdgeDuration{0} - phantom_node.GetForwardDuration(),
+                         EdgeDistance{0} - phantom_node.GetForwardDistance(),
+                         EdgeDistance{0} - urban_seed(phantom_node.forward_segment_id,
+                                                      phantom_node.GetForwardDistance())});
+        }
+        if (phantom_node.IsValidReverseSource())
+        {
+            heap.Insert(phantom_node.reverse_segment_id.id,
+                        EdgeWeight{0} - phantom_node.GetReverseWeightPlusOffset(),
+                        {phantom_node.reverse_segment_id.id,
+                         EdgeDuration{0} - phantom_node.GetReverseDuration(),
+                         EdgeDistance{0} - phantom_node.GetReverseDistance(),
+                         EdgeDistance{0} - urban_seed(phantom_node.reverse_segment_id,
+                                                      phantom_node.GetReverseDistance())});
+        }
+    }
+}
+
+template <typename ManyToManyQueryHeap>
+void insertTargetInHeapWithUrbanSeed(const DataFacade<Algorithm> &facade,
+                                     ManyToManyQueryHeap &heap,
+                                     const PhantomNodeCandidates &target_candidates,
+                                     const bool calculate_urban)
+{
+    const bool has_urban = calculate_urban && facade.HasUrbanRatios();
+    const auto urban_seed = [&](const SegmentID &segment, const EdgeDistance distance)
+    {
+        if (!has_urban)
+        {
+            return EdgeDistance{0};
+        }
+        const auto ratio = facade.GetUrbanRatio(facade.GetClassData(segment.id));
+        return to_alias<EdgeDistance>(ratio * from_alias<float>(distance));
+    };
+
+    for (const auto &phantom_node : target_candidates)
+    {
+        if (phantom_node.IsValidForwardTarget())
+        {
+            heap.Insert(phantom_node.forward_segment_id.id,
+                        phantom_node.GetForwardWeightPlusOffset(),
+                        {phantom_node.forward_segment_id.id,
+                         phantom_node.GetForwardDuration(),
+                         phantom_node.GetForwardDistance(),
+                         urban_seed(phantom_node.forward_segment_id,
+                                    phantom_node.GetForwardDistance())});
+        }
+        if (phantom_node.IsValidReverseTarget())
+        {
+            heap.Insert(phantom_node.reverse_segment_id.id,
+                        phantom_node.GetReverseWeightPlusOffset(),
+                        {phantom_node.reverse_segment_id.id,
+                         phantom_node.GetReverseDuration(),
+                         phantom_node.GetReverseDistance(),
+                         urban_seed(phantom_node.reverse_segment_id,
+                                    phantom_node.GetReverseDistance())});
+        }
+    }
+}
+
 template <bool DIRECTION>
 void relaxOutgoingEdges(
     const DataFacade<Algorithm> &facade,
     const typename SearchEngineData<Algorithm>::ManyToManyQueryHeap::HeapNode &heapNode,
     typename SearchEngineData<Algorithm>::ManyToManyQueryHeap &query_heap,
-    const PhantomNodeCandidates &)
+    const PhantomNodeCandidates &,
+    const bool calculate_urban)
 {
     if (stallAtNode<DIRECTION>(facade, heapNode, query_heap))
     {
@@ -60,23 +152,27 @@ void relaxOutgoingEdges(
 
             const auto edge_duration = data.duration;
             const auto edge_distance = data.distance;
+            const auto edge_urban =
+                calculate_urban ? facade.GetUrbanMeters(edge) : EdgeDistance{0};
 
             BOOST_ASSERT_MSG(edge_weight > EdgeWeight{0}, "edge_weight invalid");
             const auto to_weight = heapNode.weight + edge_weight;
             const auto to_duration = heapNode.data.duration + to_alias<EdgeDuration>(edge_duration);
             const auto to_distance = heapNode.data.distance + edge_distance;
+            const auto to_urban = heapNode.data.urban + edge_urban;
 
             const auto toHeapNode = query_heap.GetHeapNodeIfWasInserted(to);
             // New Node discovered -> Add to Heap + Node Info Storage
             if (!toHeapNode)
             {
-                query_heap.Insert(to, to_weight, {heapNode.node, to_duration, to_distance});
+                query_heap.Insert(
+                    to, to_weight, {heapNode.node, to_duration, to_distance, to_urban});
             }
             // Found a shorter Path -> Update weight and set new parent
             else if (std::tie(to_weight, to_duration) <
                      std::tie(toHeapNode->weight, toHeapNode->data.duration))
             {
-                toHeapNode->data = {heapNode.node, to_duration, to_distance};
+                toHeapNode->data = {heapNode.node, to_duration, to_distance, to_urban};
                 toHeapNode->weight = to_weight;
                 query_heap.DecreaseKey(*toHeapNode);
             }
@@ -92,8 +188,10 @@ void forwardRoutingStep(const DataFacade<Algorithm> &facade,
                         std::vector<EdgeWeight> &weights_table,
                         std::vector<EdgeDuration> &durations_table,
                         std::vector<EdgeDistance> &distances_table,
+                        std::vector<EdgeDistance> &urban_table,
                         std::vector<NodeID> &middle_nodes_table,
-                        const PhantomNodeCandidates &candidates)
+                        const PhantomNodeCandidates &candidates,
+                        const bool calculate_urban)
 {
     // Take a copy of the extracted node because otherwise could be modified later if toHeapNode is
     // the same
@@ -111,28 +209,41 @@ void forwardRoutingStep(const DataFacade<Algorithm> &facade,
         const auto target_weight = current_bucket.weight;
         const auto target_duration = current_bucket.duration;
         const auto target_distance = current_bucket.distance;
+        const auto target_urban = current_bucket.urban;
 
         auto &current_weight = weights_table[row_index * number_of_targets + column_index];
 
         EdgeDistance nulldistance = {0};
+        EdgeDistance nullurban = {0};
 
         auto &current_duration = durations_table[row_index * number_of_targets + column_index];
         auto &current_distance =
             distances_table.empty() ? nulldistance
                                     : distances_table[row_index * number_of_targets + column_index];
+        auto &current_urban = urban_table.empty()
+                                  ? nullurban
+                                  : urban_table[row_index * number_of_targets + column_index];
 
         // Check if new weight is better
         auto new_weight = heapNode.weight + target_weight;
         auto new_duration = heapNode.data.duration + target_duration;
         auto new_distance = heapNode.data.distance + target_distance;
+        auto new_urban = heapNode.data.urban + target_urban;
 
         if (new_weight < EdgeWeight{0})
         {
-            if (addLoopWeight(facade, heapNode.node, new_weight, new_duration, new_distance))
+            if (addLoopWeight(facade,
+                              heapNode.node,
+                              new_weight,
+                              new_duration,
+                              new_distance,
+                              new_urban,
+                              calculate_urban))
             {
                 current_weight = std::min(current_weight, new_weight);
                 current_duration = std::min(current_duration, new_duration);
                 current_distance = std::min(current_distance, new_distance);
+                current_urban = std::min(current_urban, new_urban);
                 middle_nodes_table[row_index * number_of_targets + column_index] = heapNode.node;
             }
         }
@@ -141,18 +252,21 @@ void forwardRoutingStep(const DataFacade<Algorithm> &facade,
             current_weight = new_weight;
             current_duration = new_duration;
             current_distance = new_distance;
+            current_urban = new_urban;
             middle_nodes_table[row_index * number_of_targets + column_index] = heapNode.node;
         }
     }
 
-    relaxOutgoingEdges<FORWARD_DIRECTION>(facade, heapNode, query_heap, candidates);
+    relaxOutgoingEdges<FORWARD_DIRECTION>(
+        facade, heapNode, query_heap, candidates, calculate_urban);
 }
 
 void backwardRoutingStep(const DataFacade<Algorithm> &facade,
                          const unsigned column_index,
                          typename SearchEngineData<Algorithm>::ManyToManyQueryHeap &query_heap,
                          std::vector<NodeBucket> &search_space_with_buckets,
-                         const PhantomNodeCandidates &candidates)
+                         const PhantomNodeCandidates &candidates,
+                         const bool calculate_urban)
 {
     // Take a copy (no ref &) of the extracted node because otherwise could be modified later if
     // toHeapNode is the same
@@ -164,9 +278,11 @@ void backwardRoutingStep(const DataFacade<Algorithm> &facade,
                                            column_index,
                                            heapNode.weight,
                                            heapNode.data.duration,
-                                           heapNode.data.distance);
+                                           heapNode.data.distance,
+                                           heapNode.data.urban);
 
-    relaxOutgoingEdges<REVERSE_DIRECTION>(facade, heapNode, query_heap, candidates);
+    relaxOutgoingEdges<REVERSE_DIRECTION>(
+        facade, heapNode, query_heap, candidates, calculate_urban);
 }
 
 } // namespace ch
@@ -178,16 +294,21 @@ manyToManySearch(SearchEngineData<ch::Algorithm> &engine_working_data,
                  const std::vector<PhantomNodeCandidates> &candidates_list,
                  const std::vector<std::size_t> &source_indices,
                  const std::vector<std::size_t> &target_indices,
-                 const bool calculate_distance)
+                 const bool calculate_distance,
+                 std::vector<EdgeDistance> *urban_meters_table)
 {
     const auto number_of_sources = source_indices.size();
     const auto number_of_targets = target_indices.size();
     const auto number_of_entries = number_of_sources * number_of_targets;
 
+    const bool calculate_urban = urban_meters_table != nullptr && facade.HasUrbanData();
+
     std::vector<EdgeWeight> weights_table(number_of_entries, INVALID_EDGE_WEIGHT);
     std::vector<EdgeDuration> durations_table(number_of_entries, MAXIMAL_EDGE_DURATION);
     std::vector<EdgeDistance> distances_table(calculate_distance ? number_of_entries : 0,
                                               MAXIMAL_EDGE_DISTANCE);
+    std::vector<EdgeDistance> urban_table(calculate_urban ? number_of_entries : 0,
+                                          MAXIMAL_EDGE_DISTANCE);
     std::vector<NodeID> middle_nodes_table(number_of_entries, SPECIAL_NODEID);
 
     std::vector<NodeBucket> search_space_with_buckets;
@@ -201,13 +322,17 @@ manyToManySearch(SearchEngineData<ch::Algorithm> &engine_working_data,
         engine_working_data.InitializeOrClearManyToManyThreadLocalStorage(
             facade.GetNumberOfNodes());
         auto &query_heap = *(engine_working_data.many_to_many_heap);
-        insertTargetInHeap(query_heap, target_candidates);
+        ch::insertTargetInHeapWithUrbanSeed(facade, query_heap, target_candidates, calculate_urban);
 
         // Explore search space
         while (!query_heap.Empty())
         {
-            backwardRoutingStep(
-                facade, column_index, query_heap, search_space_with_buckets, target_candidates);
+            backwardRoutingStep(facade,
+                                column_index,
+                                query_heap,
+                                search_space_with_buckets,
+                                target_candidates,
+                                calculate_urban);
         }
     }
 
@@ -224,7 +349,7 @@ manyToManySearch(SearchEngineData<ch::Algorithm> &engine_working_data,
         engine_working_data.InitializeOrClearManyToManyThreadLocalStorage(
             facade.GetNumberOfNodes());
         auto &query_heap = *(engine_working_data.many_to_many_heap);
-        insertSourceInHeap(query_heap, source_candidates);
+        ch::insertSourceInHeapWithUrbanSeed(facade, query_heap, source_candidates, calculate_urban);
 
         // Explore search space
         while (!query_heap.Empty())
@@ -237,9 +362,16 @@ manyToManySearch(SearchEngineData<ch::Algorithm> &engine_working_data,
                                weights_table,
                                durations_table,
                                distances_table,
+                               urban_table,
                                middle_nodes_table,
-                               source_candidates);
+                               source_candidates,
+                               calculate_urban);
         }
+    }
+
+    if (urban_meters_table != nullptr)
+    {
+        *urban_meters_table = std::move(urban_table);
     }
 
     return std::make_pair(std::move(durations_table), std::move(distances_table));

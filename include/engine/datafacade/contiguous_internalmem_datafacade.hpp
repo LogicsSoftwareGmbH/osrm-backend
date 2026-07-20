@@ -9,12 +9,15 @@
 #include "engine/approach.hpp"
 #include "engine/geospatial_query.hpp"
 
+#include "extractor/urban_classes.hpp"
+
 #include "storage/shared_datatype.hpp"
 #include "storage/shared_memory_ownership.hpp"
 #include "storage/view_factory.hpp"
 
 #include "util/exception.hpp"
 #include "util/exception_utils.hpp"
+#include "util/iterator_adapters.hpp"
 #include "util/log.hpp"
 
 #include <boost/assert.hpp>
@@ -61,6 +64,8 @@ class ContiguousInternalMemoryAlgorithmDataFacade<CH> : public datafacade::Algor
     using GraphEdge = QueryGraph::EdgeArrayEntry;
 
     QueryGraph m_query_graph;
+    util::vector_view<EdgeDistance> m_urban_meters;
+    bool m_has_urban_data = false;
 
     // allocator that keeps the allocation data
     std::shared_ptr<ContiguousBlockAllocator> allocator;
@@ -81,6 +86,18 @@ class ContiguousInternalMemoryAlgorithmDataFacade<CH> : public datafacade::Algor
     {
         m_query_graph =
             make_filtered_graph_view(index, "/ch/metrics/" + metric_name, exclude_index);
+
+        // the urban_meters side-car is optional; datasets preprocessed without
+        // urban_share_weights (or by stock OSRM) simply lack the block
+        const auto urban_block_name = "/ch/metrics/" + metric_name + "/urban_meters";
+        m_has_urban_data = false;
+        index.List(
+            urban_block_name,
+            util::make_function_output_iterator([&](const auto &) { m_has_urban_data = true; }));
+        if (m_has_urban_data)
+        {
+            m_urban_meters = make_vector_view<EdgeDistance>(index, urban_block_name);
+        }
     }
 
     // search graph access
@@ -106,6 +123,15 @@ class ContiguousInternalMemoryAlgorithmDataFacade<CH> : public datafacade::Algor
     EdgeRange GetAdjacentEdgeRange(const NodeID edge_based_node_id) const override final
     {
         return m_query_graph.GetAdjacentEdgeRange(edge_based_node_id);
+    }
+
+    bool HasUrbanData() const override final { return m_has_urban_data; }
+
+    EdgeDistance GetUrbanMeters(const EdgeID edge_based_edge_id) const override final
+    {
+        BOOST_ASSERT(m_has_urban_data);
+        BOOST_ASSERT(edge_based_edge_id < m_urban_meters.size());
+        return m_urban_meters[edge_based_edge_id];
     }
 
     // searches for a specific edge
@@ -185,6 +211,9 @@ class ContiguousInternalMemoryDataFacadeBase : public BaseDataFacade
     // available turns. Such a class id is stored with every edge.
     std::optional<util::vector_view<util::guidance::EntryClass>> m_entry_class_table;
 
+    util::vector_view<float> m_urban_class_weights;
+    bool m_has_urban_ratios = false;
+
     // allocator that keeps the allocation data
     std::shared_ptr<ContiguousBlockAllocator> allocator;
 
@@ -234,6 +263,14 @@ class ContiguousInternalMemoryDataFacadeBase : public BaseDataFacade
         if (isIndexed(index, "/common/turn_data"))
         {
             turn_data = make_turn_data_view(index, "/common/turn_data");
+        }
+
+        // optional urban class-weight LUT, loaded from .osrm.urban_config (or the
+        // copy inside .osrm.urban on directories predating that side-car)
+        m_has_urban_ratios = isIndexed(index, "/common/urban_class_weights");
+        if (m_has_urban_ratios)
+        {
+            m_urban_class_weights = make_vector_view<float>(index, "/common/urban_class_weights");
         }
 
         if (isIndexed(index, "/common/names"))
@@ -429,6 +466,14 @@ class ContiguousInternalMemoryDataFacadeBase : public BaseDataFacade
     extractor::ClassData GetClassData(const NodeID edge_based_node_id) const override final
     {
         return edge_based_node_data.GetClassData(edge_based_node_id);
+    }
+
+    bool HasUrbanRatios() const override final { return m_has_urban_ratios; }
+
+    float GetUrbanRatio(const extractor::ClassData classes) const override final
+    {
+        BOOST_ASSERT(m_has_urban_ratios);
+        return extractor::urbanClassRatio(classes, m_urban_class_weights);
     }
 
     bool ExcludeNode(const NodeID edge_based_node_id) const override final

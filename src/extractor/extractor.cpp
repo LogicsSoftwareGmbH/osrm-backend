@@ -47,6 +47,7 @@
 #include <tbb/parallel_pipeline.h>
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <thread>
 #include <tuple>
@@ -146,6 +147,32 @@ void SetExcludableClasses(const ExtractorCallbacks::ClassesMap &classes_map,
             profile_properties.SetExcludableClasses(combination_index++, mask);
         }
     }
+}
+
+// Resolves the profile's urban_share_weights (class name -> weight) into the
+// bit-indexed LUT serialized to .osrm.urban_config
+UrbanClassWeights
+MakeUrbanClassWeights(const std::vector<std::pair<std::string, float>> &urban_share_weights,
+                      const ExtractorCallbacks::ClassesMap &classes_map)
+{
+    UrbanClassWeights weights{};
+    for (const auto &[name, weight] : urban_share_weights)
+    {
+        auto iter = classes_map.find(name);
+        if (iter == classes_map.end())
+        {
+            throw util::exception("urban_share_weights uses unknown class name: " + name +
+                                  ". Class names must be declared in the profile's classes list.");
+        }
+        if (!std::isfinite(weight) || weight < 0.f || weight > 1.f)
+        {
+            throw util::exception("urban_share_weights[" + name + "] must be within [0, 1].");
+        }
+        auto range = getClassIndexes(iter->second);
+        BOOST_ASSERT(range.size() == 1);
+        weights[range.front()] = weight;
+    }
+    return weights;
 }
 
 std::vector<CompressedNodeBasedGraphEdge> toEdgeList(const util::NodeBasedDynamicGraph &graph)
@@ -342,8 +369,8 @@ int Extractor::run(ScriptingEnvironment &scripting_environment)
 
     util::Log() << "Expansion: " << nodes_per_second << " nodes/sec and " << edges_per_second
                 << " edges/sec";
-    util::Log() << "To prepare the data for routing, run: " << "./osrm-partition "
-                << config.base_path;
+    util::Log() << "To prepare the data for routing, run: "
+                << "./osrm-partition " << config.base_path;
 
     return 0;
 }
@@ -618,6 +645,25 @@ Extractor::ParsedOSMData Extractor::ParseOSMData(ScriptingEnvironment &scripting
     auto excludable_classes = scripting_environment.GetExcludableClasses();
     SetExcludableClasses(classes_map, excludable_classes, profile_properties);
     files::writeProfileProperties(config.GetPath(".osrm.properties").string(), profile_properties);
+
+    const auto urban_share_weights = scripting_environment.GetUrbanShareWeights();
+    if (!urban_share_weights.empty())
+    {
+        // the identity binds the LUT to the class-name -> bit mapping serialized
+        // into .osrm.properties just above — load rejects the config when the
+        // two stop belonging to the same extract run
+        const auto urban_class_weights = MakeUrbanClassWeights(urban_share_weights, classes_map);
+        files::writeUrbanConfig(
+            config.GetPath(".osrm.urban_config"),
+            urban_class_weights,
+            computeUrbanConfigIdentity(profile_properties, urban_class_weights));
+    }
+    else
+    {
+        // outputs are always regenerated: a stale config from an earlier run with
+        // urban_share_weights must not keep the urban pipeline alive downstream
+        std::filesystem::remove(config.GetPath(".osrm.urban_config"));
+    }
 
     TIMER_STOP(extracting);
     util::Log() << "extraction finished after " << TIMER_SEC(extracting) << "s";

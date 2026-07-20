@@ -20,12 +20,19 @@ function setup()
       use_turn_restrictions         = true
     },
 
-    classes = {"motorway", "toll", "TooWords2"},
+    classes = {"motorway", "toll", "TooWords2", "urban", "suburban"},
 
     excludable = {
         {["motorway"] = true},
         {["toll"] = true},
         {["motorway"] = true, ["toll"] = true}
+    },
+
+    -- weights for the urban_meters side-car consumed by the /table annotation
+    -- urban_share; testbot tags ways literally via urban=yes|suburban
+    urban_share_weights = {
+        urban = 1.0,
+        suburban = 0.5
     },
 
     default_speed  = 24,
@@ -118,6 +125,15 @@ function process_way (profile, way, result)
   if toll == "yes" then
       result.forward_classes["toll"] = true
       result.backward_classes["toll"] = true
+  end
+
+  local urban = way:get_value_by_key("urban")
+  if urban == "yes" then
+      result.forward_classes["urban"] = true
+      result.backward_classes["urban"] = true
+  elseif urban == "suburban" then
+      result.forward_classes["suburban"] = true
+      result.backward_classes["suburban"] = true
   end
 
   if junction == 'roundabout' then

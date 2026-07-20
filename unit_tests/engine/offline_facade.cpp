@@ -319,6 +319,8 @@ class ContiguousInternalMemoryDataFacade<routing_algorithms::offline::Algorithm>
     }
 
     osrm::extractor::ClassData GetClassData(const NodeID /*id*/) const override { return 0; }
+    bool HasUrbanRatios() const override { return false; }
+    float GetUrbanRatio(const extractor::ClassData /*classes*/) const override { return 0.f; }
     std::vector<std::string> GetClasses(const extractor::ClassData /*class_data*/) const override
     {
         return {};

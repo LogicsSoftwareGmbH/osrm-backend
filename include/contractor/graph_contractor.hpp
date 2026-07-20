@@ -11,7 +11,11 @@
 namespace osrm::contractor
 {
 
-using GraphAndFilter = std::tuple<QueryGraph, std::vector<std::vector<bool>>>;
+// graph, per-exclude-combination edge filters, and the urban_meters side-car
+// (positionally parallel to the graph's edge array, all-zero when the dataset
+// has no urban configuration)
+using GraphAndFilter =
+    std::tuple<QueryGraph, std::vector<std::vector<bool>>, std::vector<EdgeDistance>>;
 
 GraphAndFilter contractFullGraph(ContractorGraph contractor_graph,
                                  std::vector<EdgeWeight> node_weights);

@@ -21,6 +21,7 @@ void init_TableParameters(nb::module_ &m)
                               {std::string(), TableParameters::AnnotationsType::None},
                               {"duration", TableParameters::AnnotationsType::Duration},
                               {"distance", TableParameters::AnnotationsType::Distance},
+                              {"urban_share", TableParameters::AnnotationsType::UrbanShare},
                               {"all", TableParameters::AnnotationsType::All}};
 
     nb::class_<TableParameters, BaseParameters>(m, "TableParameters")
@@ -41,8 +42,9 @@ void init_TableParameters(nb::module_ &m)
              "Args:\n\
                 sources (list of int): Use location with given index as source. (default [])\n\
                 destinations (list of int): Use location with given index as destination. (default [])\n\
-                annotations (list of 'none' | 'duration' | 'distance' | 'all'): \
-                    Returns additional metadata for each coordinate along the route geometry. (default [])\n\
+                annotations (list of 'none' | 'duration' | 'distance' | 'urban_share' | 'all'): \
+                    Returns additional metadata for each coordinate along the route geometry \
+                    ('all' does not include 'urban_share'). (default [])\n\
                 fallback_speed (float): If no route found between a source/destination pair, calculate the as-the-crow-flies distance, \
                     then use this speed to estimate duration. (default INVALID_FALLBACK_SPEED)\n\
                 fallback_coordinate_type (string 'input' | 'snapped'): When using a fallback_speed, use the user-supplied coordinate (input), \

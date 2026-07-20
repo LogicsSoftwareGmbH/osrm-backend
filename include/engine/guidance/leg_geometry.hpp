@@ -41,6 +41,10 @@ struct LegGeometry
         double weight; // weight value, NOT including the turn weight
 
         DatasourceID datasource;
+
+        // urban class ratio of the edge-based node this segment lies on, in [0, 1];
+        // 0 when the dataset carries no urban class weights
+        double urban_share = 0.;
     };
     std::vector<Annotation> annotations;
 

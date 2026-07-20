@@ -70,7 +70,11 @@ struct TableParameters : public BaseParameters
         None = 0,
         Duration = 0x01,
         Distance = 0x02,
-        All = Duration | Distance
+        // All predates UrbanShare and intentionally excludes it: urban_share is only
+        // available on CH datasets preprocessed with urban class weights, so existing
+        // annotations=all clients must not start requesting (and failing on) it.
+        All = Duration | Distance,
+        UrbanShare = 0x04
     };
 
     AnnotationsType annotations = AnnotationsType::Duration;

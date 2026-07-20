@@ -83,6 +83,16 @@ Status ViaRoutePlugin::HandleRequest(const RoutingAlgorithmsInterface &algorithm
         return Status::Error;
 
     const auto &facade = algorithms.GetFacade();
+
+    if ((route_parameters.annotations_type & api::RouteParameters::AnnotationsType::UrbanShare) &&
+        !facade.HasUrbanRatios())
+    {
+        return Error("NoUrbanData",
+                     "Urban share data is not available for this dataset. Preprocess with a "
+                     "profile that declares urban_share_weights to enable it.",
+                     result);
+    }
+
     auto phantom_node_pairs = GetPhantomNodes(facade, route_parameters);
     if (phantom_node_pairs.size() != route_parameters.coordinates.size())
     {

@@ -49,7 +49,7 @@ struct ContractedEdgeContainer
     }
 
   public:
-    void Insert(std::vector<QueryEdge> new_edges)
+    void Insert(std::vector<UrbanQueryEdge> new_edges)
     {
         BOOST_ASSERT(edges.size() == 0);
         BOOST_ASSERT(flags.empty());
@@ -77,7 +77,7 @@ struct ContractedEdgeContainer
         }
     }
 
-    void Merge(std::vector<QueryEdge> new_edges)
+    void Merge(std::vector<UrbanQueryEdge> new_edges)
     {
         BOOST_ASSERT(index < sizeof(MergedFlags) * CHAR_BIT);
 
@@ -163,7 +163,10 @@ struct ContractedEdgeContainer
 
     std::size_t index = 0;
     std::vector<MergedFlags> flags;
-    std::vector<QueryEdge> edges;
+    // UrbanQueryEdge so the urban_meters side-car stays in lockstep through
+    // merge/permutation; comparison and merging still operate on the QueryEdge
+    // base (urban_meters never influences which edges merge)
+    std::vector<UrbanQueryEdge> edges;
 };
 } // namespace osrm::contractor
 

@@ -161,6 +161,39 @@ BOOST_AUTO_TEST_CASE(test_roundtrip_response_for_locations_in_big_component_new_
     test_roundtrip_response_for_locations_in_big_component(false);
 }
 
+BOOST_AUTO_TEST_CASE(test_roundtrip_urban_share_annotation)
+{
+    using namespace osrm;
+
+    auto osrm = getOSRM(OSRM_TEST_DATA_DIR "/ch/monaco.osrm");
+    const auto locations = get_locations_in_big_component();
+
+    TripParameters params;
+    params.annotations_type = RouteParameters::AnnotationsType::UrbanShare;
+    params.coordinates.push_back(locations.at(0));
+    params.coordinates.push_back(locations.at(1));
+    params.coordinates.push_back(locations.at(2));
+
+    json::Object json_result;
+    const auto rc = run_trip_json(osrm, params, json_result, true);
+    BOOST_REQUIRE(rc == Status::Ok);
+
+    const auto &trips = std::get<json::Array>(json_result.values.at("trips")).values;
+    BOOST_REQUIRE_EQUAL(trips.size(), 1);
+    const auto &legs =
+        std::get<json::Array>(std::get<json::Object>(trips[0]).values.at("legs")).values;
+    BOOST_REQUIRE(!legs.empty());
+    for (const auto &leg_value : legs)
+    {
+        const auto &leg = std::get<json::Object>(leg_value);
+        const auto &annotation = std::get<json::Object>(leg.values.at("annotation"));
+        const auto &shares = std::get<json::Array>(annotation.values.at("urban_share")).values;
+        BOOST_REQUIRE(!shares.empty());
+        const auto leg_share = std::get<json::Number>(leg.values.at("urban_share")).value;
+        BOOST_CHECK(leg_share >= 0. && leg_share <= 1.);
+    }
+}
+
 void test_roundtrip_response_for_locations_across_components(bool use_json_only_api)
 {
     using namespace osrm;

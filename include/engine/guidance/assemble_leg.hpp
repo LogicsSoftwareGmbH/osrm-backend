@@ -233,7 +233,8 @@ inline RouteLeg assembleLeg(const datafacade::BaseDataFacade &facade,
                     duration / 10.,
                     weight / facade.GetWeightMultiplier(),
                     "",
-                    {}};
+                    {},
+                    std::nullopt};
 }
 
 } // namespace osrm::engine::guidance
