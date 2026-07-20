@@ -222,9 +222,12 @@ In addition to the [general options](#general-options) the following options are
 with `NoUrbanData`. Unlike the table service's `urban_share` annotation it works with both the
 `ch` and `mld` algorithms. It adds a per-segment `urban_share` array to the leg
 [`Annotation` object](#annotation-object) and an `urban_share` summary value to each
-[`RouteLeg` object](#routeleg-object); the leg value matches the corresponding
-`urban_shares[i][j]` cell of a table request over the same coordinates (up to `±0.001`
-rounding).
+[`RouteLeg` object](#routeleg-object); the leg value closely matches the corresponding
+`urban_shares[i][j]` cell of a table request over the same coordinates — normally within
+`±0.001` rounding. Two rare cases can exceed that: when two paths tie on weight the table
+and route searches may pick different (equally fast) paths, and where parallel edges of
+differing urban class exist between the same nodes the contracted table payload can describe
+a slightly different edge mix than the unpacked route.
 
 **Response**
 

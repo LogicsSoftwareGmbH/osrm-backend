@@ -132,6 +132,11 @@ How ways get tagged with such classes is entirely up to the profile. The bundled
 `lib/urban_classifier.lua` implements a tiered OSM-tag heuristic (maxspeed zone keys, highway
 class, maxspeed value, street lighting) that sets `urban`/`suburban` classes; all tuning lives
 in that single file. `car.lua` uses it together with the `urban_share_weights` shown above.
+Note the semantic commitment the bundled classifier makes: motorways and trunks (including
+their links) always count as rural — even inside city limits and even against explicit urban
+zone tags — so the resulting share measures *surface-street* urbanity as a congestion proxy,
+not whether the path is geographically inside a built-up area. Grade-separated urban
+motorways deliberately do not inflate it.
 
 ### process_node(profile, node, result, relations)
 Process an OSM node to determine whether this node is an obstacle, if it can be passed at all and whether passing it incurs a delay.

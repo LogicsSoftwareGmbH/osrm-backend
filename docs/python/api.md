@@ -78,7 +78,7 @@ Inherits all [BaseParameters](#baseparameters).
 
 - **`steps`** `bool` - Return route steps for each leg. Default: `False`.
 - **`alternatives`** `int` - Number of alternative routes to search for. Default: `0`.
-- **`annotations`** `list[str]` - Additional metadata: `"none"`, `"duration"`, `"nodes"`, `"distance"`, `"weight"`, `"datasources"`, `"speed"`, `"all"`. Default: `[]`.
+- **`annotations`** `list[str]` - Additional metadata: `"none"`, `"duration"`, `"nodes"`, `"distance"`, `"weight"`, `"datasources"`, `"speed"`, `"urban_share"`, `"all"`. Default: `[]`. `"urban_share"` (not part of `"all"`) adds a per-segment urban-share array and a per-leg summary value; it requires data preprocessed with a profile that declares `urban_share_weights`, otherwise the request fails with `NoUrbanData`.
 - **`geometries`** `str` - Geometry format: `"polyline"`, `"polyline6"`, `"geojson"`. Default: `"polyline"`.
 - **`overview`** `str` - Overview geometry: `"simplified"`, `"full"`, `"false"`. Default: `"simplified"`.
 - **`continue_straight`** `bool | None` - Force route to continue straight at waypoints.
@@ -104,7 +104,7 @@ Inherits all [BaseParameters](#baseparameters).
 
 - **`sources`** `list[int]` - Indices of source coordinates. Default: all.
 - **`destinations`** `list[int]` - Indices of destination coordinates. Default: all.
-- **`annotations`** `list[str]` - `"duration"`, `"distance"`, `"all"`. Default: `["duration"]`.
+- **`annotations`** `list[str]` - `"duration"`, `"distance"`, `"urban_share"`, `"all"`. Default: `["duration"]`. `"urban_share"` (not part of `"all"`) adds an urban-share matrix; it requires CH data (contraction hierarchies) preprocessed with a profile that declares `urban_share_weights` — otherwise the request fails with `NotImplemented` (MLD) or `NoUrbanData`.
 - **`fallback_speed`** `float` - Speed for crow-flies fallback when no route found.
 - **`fallback_coordinate_type`** `str` - `"input"` or `"snapped"`.
 - **`scale_factor`** `float` - Scales duration values. Default: `1.0`.
