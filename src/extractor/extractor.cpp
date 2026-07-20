@@ -151,9 +151,9 @@ void SetExcludableClasses(const ExtractorCallbacks::ClassesMap &classes_map,
 
 // Resolves the profile's urban_share_weights (class name -> weight) into the
 // bit-indexed LUT serialized to .osrm.urban_config
-UrbanClassWeights MakeUrbanClassWeights(
-    const std::vector<std::pair<std::string, float>> &urban_share_weights,
-    const ExtractorCallbacks::ClassesMap &classes_map)
+UrbanClassWeights
+MakeUrbanClassWeights(const std::vector<std::pair<std::string, float>> &urban_share_weights,
+                      const ExtractorCallbacks::ClassesMap &classes_map)
 {
     UrbanClassWeights weights{};
     for (const auto &[name, weight] : urban_share_weights)
@@ -369,8 +369,8 @@ int Extractor::run(ScriptingEnvironment &scripting_environment)
 
     util::Log() << "Expansion: " << nodes_per_second << " nodes/sec and " << edges_per_second
                 << " edges/sec";
-    util::Log() << "To prepare the data for routing, run: " << "./osrm-partition "
-                << config.base_path;
+    util::Log() << "To prepare the data for routing, run: "
+                << "./osrm-partition " << config.base_path;
 
     return 0;
 }
@@ -649,8 +649,14 @@ Extractor::ParsedOSMData Extractor::ParseOSMData(ScriptingEnvironment &scripting
     const auto urban_share_weights = scripting_environment.GetUrbanShareWeights();
     if (!urban_share_weights.empty())
     {
-        files::writeUrbanConfig(config.GetPath(".osrm.urban_config"),
-                                MakeUrbanClassWeights(urban_share_weights, classes_map));
+        // the identity binds the LUT to the class-name -> bit mapping serialized
+        // into .osrm.properties just above — load rejects the config when the
+        // two stop belonging to the same extract run
+        const auto urban_class_weights = MakeUrbanClassWeights(urban_share_weights, classes_map);
+        files::writeUrbanConfig(
+            config.GetPath(".osrm.urban_config"),
+            urban_class_weights,
+            computeUrbanConfigIdentity(profile_properties, urban_class_weights));
     }
     else
     {

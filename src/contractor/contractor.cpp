@@ -10,6 +10,7 @@
 #include "extractor/node_based_edge.hpp"
 
 #include "storage/io.hpp"
+#include "storage/urban_validation.hpp"
 
 #include "updater/updater.hpp"
 
@@ -70,8 +71,14 @@ int Contractor::Run()
     std::vector<std::vector<bool>> node_filters;
     std::vector<float> node_urban_ratio;
     extractor::UrbanClassWeights urban_class_weights{};
+    std::uint32_t urban_config_identity = 0;
+    // trust the config only when it belongs to the extract products next to it —
+    // deriving urban_meters from a leftover config of a different extract run
+    // would bake wrong ratios into the side-car (same predicate as load time)
     const bool has_urban_config =
-        std::filesystem::exists(config.GetPath(".osrm.urban_config"));
+        storage::urbanConfigIdentityIfValid(config.GetPath(".osrm.urban_config"),
+                                            config.GetPath(".osrm.properties"))
+            .has_value();
     {
         extractor::EdgeBasedNodeDataContainer node_data;
         extractor::files::readNodeData(config.GetPath(".osrm.ebg_nodes"), node_data);
@@ -85,8 +92,8 @@ int Contractor::Run()
 
         if (has_urban_config)
         {
-            extractor::files::readUrbanConfig(config.GetPath(".osrm.urban_config"),
-                                              urban_class_weights);
+            extractor::files::readUrbanConfig(
+                config.GetPath(".osrm.urban_config"), urban_class_weights, urban_config_identity);
             node_urban_ratio.resize(number_of_edge_based_nodes);
             for (NodeID node = 0; node < number_of_edge_based_nodes; ++node)
             {
@@ -100,12 +107,12 @@ int Contractor::Run()
     std::vector<std::vector<bool>> edge_filters;
     std::vector<EdgeDistance> urban_meters;
     std::vector<std::vector<bool>> cores;
-    std::tie(query_graph, edge_filters, urban_meters) = contractExcludableGraph(
-        toContractorGraph(number_of_edge_based_nodes,
-                          edge_based_edge_list,
-                          has_urban_config ? &node_urban_ratio : nullptr),
-        std::move(node_weights),
-        node_filters);
+    std::tie(query_graph, edge_filters, urban_meters) =
+        contractExcludableGraph(toContractorGraph(number_of_edge_based_nodes,
+                                                  edge_based_edge_list,
+                                                  has_urban_config ? &node_urban_ratio : nullptr),
+                                std::move(node_weights),
+                                node_filters);
     TIMER_STOP(contraction);
     util::Log() << "Contracted graph has " << query_graph.GetNumberOfEdges() << " edges.";
     util::Log() << "Contraction took " << TIMER_SEC(contraction) << " sec";
@@ -121,7 +128,8 @@ int Contractor::Run()
                               metric_name,
                               urban_meters,
                               urban_class_weights,
-                              connectivity_checksum);
+                              connectivity_checksum,
+                              urban_config_identity);
     }
     else
     {

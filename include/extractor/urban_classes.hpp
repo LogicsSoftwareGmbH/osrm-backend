@@ -2,9 +2,13 @@
 #define OSRM_EXTRACTOR_URBAN_CLASSES_HPP
 
 #include "extractor/class_data.hpp"
+#include "extractor/profile_properties.hpp"
+
+#include <zlib.h>
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 
 namespace osrm::extractor
@@ -40,6 +44,31 @@ inline float urbanClassRatio(const ClassData classes, const WeightsT &weights)
         }
     }
     return ratio;
+}
+
+// Identity of a resolved urban-weight LUT: a CRC32 over the class-name -> bit
+// mapping it was resolved under plus the weight values themselves. The LUT's
+// bit indices are meaningless under any other class mapping, so both side-car
+// files record this identity and every load path recomputes it from the
+// .osrm.properties actually being loaded — a config left behind by a different
+// extract run, or a contract payload derived from weights that were changed
+// afterwards, is rejected instead of serving plausible but wrong ratios.
+inline std::uint32_t computeUrbanConfigIdentity(const ProfileProperties &properties,
+                                                const UrbanClassWeights &weights)
+{
+    auto crc = crc32(0L, Z_NULL, 0);
+    for (std::size_t index = 0; index <= MAX_CLASS_INDEX; ++index)
+    {
+        const auto name = properties.GetClassNameForIndex(index);
+        // include the terminator so adjacent names cannot alias each other
+        crc = crc32(crc,
+                    reinterpret_cast<const unsigned char *>(name.c_str()),
+                    static_cast<uInt>(name.size() + 1));
+    }
+    crc = crc32(crc,
+                reinterpret_cast<const unsigned char *>(weights.data()),
+                static_cast<uInt>(weights.size() * sizeof(float)));
+    return static_cast<std::uint32_t>(crc);
 }
 
 } // namespace osrm::extractor

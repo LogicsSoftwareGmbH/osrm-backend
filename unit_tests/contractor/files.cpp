@@ -58,6 +58,7 @@ BOOST_AUTO_TEST_CASE(read_write_hsgr)
 BOOST_AUTO_TEST_CASE(read_write_urban)
 {
     const std::uint32_t reference_connectivity_checksum = 0xDEADBEEF;
+    const std::uint32_t reference_config_identity = 0xC0FFEE42;
     const std::vector<EdgeDistance> reference_urban_meters = {
         EdgeDistance{0.f}, EdgeDistance{12.5f}, EdgeDistance{100.f}, EdgeDistance{37.25f}};
     extractor::UrbanClassWeights reference_weights{};
@@ -69,17 +70,21 @@ BOOST_AUTO_TEST_CASE(read_write_urban)
                                       "duration",
                                       reference_urban_meters,
                                       reference_weights,
-                                      reference_connectivity_checksum);
+                                      reference_connectivity_checksum,
+                                      reference_config_identity);
 
     std::vector<EdgeDistance> urban_meters;
     std::vector<float> class_weights;
     std::uint32_t connectivity_checksum = 0;
+    std::uint32_t config_identity = 0;
     contractor::files::readUrbanData(
-        tmp.path, "duration", urban_meters, class_weights, connectivity_checksum);
+        tmp.path, "duration", urban_meters, class_weights, connectivity_checksum, config_identity);
 
-    // the checksum binds the side-car to the .osrm.hsgr written in the same run;
-    // storage compares it before accepting the file
+    // the two headers bind the side-car to the .osrm.hsgr written in the same
+    // run and to the .osrm.urban_config its payload was derived from; storage
+    // compares both before accepting the file
     BOOST_CHECK_EQUAL(connectivity_checksum, reference_connectivity_checksum);
+    BOOST_CHECK_EQUAL(config_identity, reference_config_identity);
 
     BOOST_REQUIRE_EQUAL(urban_meters.size(), reference_urban_meters.size());
     for (std::size_t i = 0; i < urban_meters.size(); ++i)
