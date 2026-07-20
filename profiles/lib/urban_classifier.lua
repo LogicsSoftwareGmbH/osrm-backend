@@ -8,6 +8,11 @@
 -- lives in the profile's `urban_share_weights` table. Neither requires a
 -- rebuild of OSRM, only re-running osrm-extract + osrm-contract.
 --
+-- The heuristic is tuned for DACH (DE/AT/CH) tagging practice. In particular
+-- any 'zone' substring in a speed-limit context reads as urban - correct for
+-- every DE/AT/CH zone form, but NL:zone60/NL:zone80 are *rural* zones in the
+-- Netherlands. Review the zone matching before running this on other regions.
+--
 -- A profile opts in by
 --   1. adding 'urban' (and optionally 'suburban') to its `classes` Sequence,
 --   2. declaring `urban_share_weights = { urban = 1.0, suburban = 0.5 }`,
@@ -53,6 +58,19 @@ UrbanClassifier.rural_highways = Set {
 UrbanClassifier.urban_max_kmh = 40
 UrbanClassifier.suburban_max_kmh = 70
 
+-- A bare number in (urban_max_kmh, lit_corroborated_max_kmh] additionally
+-- reads as urban when the way is lit. 50 is the DE/AT/CH built-up default and
+-- the labelled ground truth is lopsided: of German 50-arterials
+-- (primary/secondary/tertiary/unclassified) carrying an explicit context tag,
+-- 153.7k say DE:urban vs 1.4k DE:rural (Overpass, 2026-07-20). Street
+-- lighting recovers 60.6% of that urban mass at full weight (93.2k of the
+-- DE:urban ones are lit=yes, only 4.8% lit=no); the unlit rest stays
+-- suburban. lit=yes also occurs on 37.8% of the rare rural-labelled 50s
+-- (town approaches, lit junctions), so this is a recall filter riding on the
+-- overwhelming prior, not a precision filter - accepted, since lit rural
+-- 50-sections behave closer to built-up traffic anyway.
+UrbanClassifier.lit_corroborated_max_kmh = 50
+
 -- Street-lit fallback: these highway types with lit=yes and no other signal
 -- are treated as suburban. lit tagging covers only ~40% of DACH ways (even on
 -- residential), so this tier has false negatives by design — but where the tag
@@ -77,11 +95,15 @@ UrbanClassifier.lit_fallback_highways = Set {
 --           DE:living_street, DE:bicycle_road-> urban
 --           DE:rural, AT:rural, rural        -> rural
 --           DE:motorway, AT:motorway         -> rural
---           sign, DE:sign:274-70, DE:274.1   -> nil (explicit signs and
+--           sign, DE:274, DE:sign:274-70     -> nil (explicit signs and
 --                                               traffic-sign codes carry no
 --                                               urban statement; the number
 --                                               parse is anchored so sign codes
---                                               never sneak through it)
+--                                               never sneak through it. Zone
+--                                               sign codes like DE:274.1 -
+--                                               Beginn Tempo-30-Zone, which
+--                                               would be semantically urban -
+--                                               have zero uses in DE data)
 local function classify_zone_value(v, allow_bare_number)
   if not v or v == '' then
     return nil
@@ -172,6 +194,10 @@ function UrbanClassifier.tier(way, data)
   end
   if kmh then
     if kmh <= UrbanClassifier.urban_max_kmh then
+      return 'urban'
+    elseif kmh <= UrbanClassifier.lit_corroborated_max_kmh and
+           way:get_value_by_key('lit') == 'yes' then
+      -- the DACH built-up default of 50 with street lighting as corroboration
       return 'urban'
     elseif kmh <= UrbanClassifier.suburban_max_kmh then
       return 'suburban'

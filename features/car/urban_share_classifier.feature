@@ -59,3 +59,29 @@ Feature: Car - Urban classifier legal-zone value handling
             | a    | b  | road,road | 0.5           |
             | b    | c  | road,road | 0             |
             | c    | d  | road,road | 0.5           |
+
+    Scenario: Car - A lit maxspeed=50 arterial is urban, unlit stays suburban
+    # 50 is the DACH built-up default; street lighting corroborates the
+    # missing urban context tag. Corroboration stops above 50: a lit 60 is
+    # plain suburban via the numeric tier.
+        Given the node map
+            """
+            a b c d e
+            """
+
+        And the ways
+            | nodes | highway   | name | maxspeed | lit |
+            | ab    | secondary | road | 50       | yes |
+            | bc    | secondary | road | 50       |     |
+            | cd    | secondary | road | 50       | no  |
+            | de    | primary   | road | 60       | yes |
+
+        And the query options
+            | annotations | urban_share |
+
+        When I route I should get
+            | from | to | route     | a:urban_share |
+            | a    | b  | road,road | 1             |
+            | b    | c  | road,road | 0.5           |
+            | c    | d  | road,road | 0.5           |
+            | d    | e  | road,road | 0.5           |
