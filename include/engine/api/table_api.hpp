@@ -19,6 +19,7 @@
 #include "util/integer_range.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 #include <iterator>
 
@@ -239,11 +240,10 @@ class TableAPI final : public BaseAPI
 
         if (parameters.annotations & TableParameters::AnnotationsType::UrbanShare)
         {
-            response.values.emplace("urban_shares",
-                                    MakeUrbanShareTable(urban_meters,
-                                                        tables.second,
-                                                        number_of_sources,
-                                                        number_of_destinations));
+            response.values.emplace(
+                "urban_shares",
+                MakeUrbanShareTable(
+                    urban_meters, tables.second, number_of_sources, number_of_destinations));
         }
 
         if (parameters.fallback_speed != from_alias<double>(INVALID_FALLBACK_SPEED) &&
@@ -338,14 +338,22 @@ class TableAPI final : public BaseAPI
     // A cell has no share when the pair is unreachable, estimated via fallback_speed
     // (urban stays unset), or degenerate (distance <= 0, e.g. the diagonal). JSON uses
     // null for such cells; flatbuffers uses -1 since 0 is a legitimate all-rural share.
+    // Non-finite accumulator values (only reachable through corrupted side-car
+    // floats — std::clamp passes NaN through) also count as unavailable rather
+    // than leaking NaN into the response.
     static bool UrbanShareUnavailable(const EdgeDistance urban, const EdgeDistance distance)
     {
         return urban == MAXIMAL_EDGE_DISTANCE || distance == INVALID_EDGE_DISTANCE ||
-               from_alias<double>(distance) <= 0.;
+               from_alias<double>(distance) <= 0. || !std::isfinite(from_alias<double>(urban));
     }
 
     static double UrbanShareValue(const EdgeDistance urban, const EdgeDistance distance)
     {
+        // the accumulation preserves urban <= distance by construction (base
+        // edges, parallel-edge merges and shortcut sums alike); the clamp only
+        // guards float drift, and a gross violation means an accumulation bug
+        // that the clamp would otherwise silently saturate away
+        BOOST_ASSERT(from_alias<double>(urban) <= from_alias<double>(distance) * (1. + 1e-6) + 1.);
         const auto share =
             std::clamp(from_alias<double>(urban) / from_alias<double>(distance), 0., 1.);
         // round to three decimal places
@@ -361,11 +369,10 @@ class TableAPI final : public BaseAPI
         std::vector<float> share_table(urban_values.size());
         for (const auto index : util::irange<std::size_t>(0UL, urban_values.size()))
         {
-            share_table[index] =
-                UrbanShareUnavailable(urban_values[index], distance_values[index])
-                    ? -1.f
-                    : static_cast<float>(
-                          UrbanShareValue(urban_values[index], distance_values[index]));
+            share_table[index] = UrbanShareUnavailable(urban_values[index], distance_values[index])
+                                     ? -1.f
+                                     : static_cast<float>(UrbanShareValue(urban_values[index],
+                                                                          distance_values[index]));
         }
         return builder.CreateVector(share_table);
     }

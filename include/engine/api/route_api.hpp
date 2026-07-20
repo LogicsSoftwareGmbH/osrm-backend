@@ -247,8 +247,10 @@ class RouteAPI : public BaseAPI
             total_distance += annotation.distance;
             urban_distance += annotation.urban_share * annotation.distance;
         }
-        if (total_distance <= 0.)
+        if (total_distance <= 0. || !std::isfinite(urban_distance))
         {
+            // non-finite only through corrupted side-car floats — treat as
+            // unavailable rather than leaking NaN into the response
             return std::nullopt;
         }
         const auto share = std::clamp(urban_distance / total_distance, 0., 1.);
@@ -535,10 +537,15 @@ class RouteAPI : public BaseAPI
         flatbuffers::Offset<flatbuffers::Vector<float>> urban_share;
         if (requested_annotations & RouteParameters::AnnotationsType::UrbanShare)
         {
-            urban_share = GetAnnotations<float>(fb_result,
-                                                leg_geometry,
-                                                [](const guidance::LegGeometry::Annotation &anno)
-                                                { return anno.urban_share; });
+            urban_share = GetAnnotations<float>(
+                fb_result,
+                leg_geometry,
+                [](const guidance::LegGeometry::Annotation &anno)
+                {
+                    // 3 decimals like the JSON path, so the same request yields
+                    // the same values in both formats
+                    return static_cast<float>(std::round(anno.urban_share * 1000.) / 1000.);
+                });
         }
 
         flatbuffers::Offset<flatbuffers::Vector<uint32_t>> weight;

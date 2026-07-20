@@ -16,8 +16,8 @@
 #include "storage/view_factory.hpp"
 
 #include "util/exception.hpp"
-#include "util/iterator_adapters.hpp"
 #include "util/exception_utils.hpp"
+#include "util/iterator_adapters.hpp"
 #include "util/log.hpp"
 
 #include <boost/assert.hpp>
@@ -91,9 +91,9 @@ class ContiguousInternalMemoryAlgorithmDataFacade<CH> : public datafacade::Algor
         // urban_share_weights (or by stock OSRM) simply lack the block
         const auto urban_block_name = "/ch/metrics/" + metric_name + "/urban_meters";
         m_has_urban_data = false;
-        index.List(urban_block_name,
-                   util::make_function_output_iterator([&](const auto &)
-                                                       { m_has_urban_data = true; }));
+        index.List(
+            urban_block_name,
+            util::make_function_output_iterator([&](const auto &) { m_has_urban_data = true; }));
         if (m_has_urban_data)
         {
             m_urban_meters = make_vector_view<EdgeDistance>(index, urban_block_name);
